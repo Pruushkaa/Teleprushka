@@ -15,6 +15,9 @@ tailwind.config = {
                     violet: '#B388FF',
                     dark: '#121212'
                 }
+            },
+            gridTemplateColumns: {
+                '24': 'repeat(24, minmax(0, 1fr))'
             }
         }
     }

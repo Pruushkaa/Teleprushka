@@ -271,7 +271,14 @@
                             </div>
                         )}
 
-                        <div className="grid grid-cols-24 gap-1 sm:gap-1.5 items-end h-40 border-b-2 border-black px-1">
+                        <div
+                            style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(24, minmax(0, 1fr))',
+                                gap: '3px'
+                            }}
+                            className="items-end h-44 border-b-2 border-black px-1"
+                        >
                             {hours.map((val, h) => {
                                 const heightPct = Math.max(6, Math.round((val / maxVal) * 100));
                                 const color = getHourColor(h);
@@ -280,7 +287,7 @@
                                 return (
                                     <div
                                         key={h}
-                                        className="h-full flex flex-col justify-end items-center group cursor-pointer"
+                                        className="h-full flex flex-col justify-end items-center group cursor-pointer relative"
                                         onMouseEnter={() => {
                                             sfx.playHover();
                                             setHoveredHour(h);
@@ -288,7 +295,7 @@
                                         onMouseLeave={() => setHoveredHour(null)}
                                     >
                                         <div
-                                            className={`w-full transition-all duration-150 border-2 border-black relative ${
+                                            className={`w-full transition-all duration-150 border-2 border-black relative hover:brightness-110 ${
                                                 isPeak ? 'shadow-[2px_2px_0px_#000]' : ''
                                             }`}
                                             style={{
@@ -298,7 +305,7 @@
                                             }}
                                         >
                                             {isPeak && (
-                                                <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-black">
+                                                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[9px] font-black text-black select-none">
                                                     ★
                                                 </div>
                                             )}
@@ -309,10 +316,17 @@
                         </div>
 
                         {/* X-axis labels */}
-                        <div className="grid grid-cols-24 gap-1 sm:gap-1.5 pt-1.5 font-mono text-[9px] sm:text-[10px] text-center text-neutral-600 font-bold">
+                        <div
+                            style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(24, minmax(0, 1fr))',
+                                gap: '3px'
+                            }}
+                            className="pt-1.5 font-mono text-[9px] sm:text-[10px] text-center text-neutral-600 font-bold"
+                        >
                             {hours.map((_, h) => (
-                                <div key={h} className={h % 3 === 0 ? 'text-black font-extrabold' : 'opacity-40'}>
-                                    {h % 3 === 0 ? h : ''}
+                                <div key={h} className={h % 3 === 0 ? 'text-black font-extrabold' : 'text-neutral-400 font-normal'}>
+                                    {h % 3 === 0 ? h : '·'}
                                 </div>
                             ))}
                         </div>
