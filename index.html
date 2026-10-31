@@ -160,13 +160,35 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
+        /* ==========================================================================
+           PUBLIC LIVE WIDGETS CONFIGURATION (GITHUB PAGES COMPATIBLE)
+           ==========================================================================
+           Задайте ваши публичные идентификаторы для работы без собственного бэкенда.
+           Все посетители сайта будут опрашивать официальные публичные API напрямую.
+           ========================================================================== */
         const ARCHIVE_CONFIG = {
+            // 1. Last.fm Live Scrobbler
+            // Профиль: https://www.last.fm/user/pruushkaa
+            // Получить бесплатный API-ключ: https://www.last.fm/api/account/create
+            LASTFM_USER: "pruushkaa",
+            LASTFM_API_KEY: "", // <--- Вставьте сюда 32-значный API ключ Last.fm (или в database.json)
+            LASTFM_POLL_INTERVAL_MS: 15000,
+
+            // 2. Discord Lanyard Live Status
+            // Ваш Discord Snowflake ID (17-19 цифр): Настройки Discord -> Расширенные -> Режим разработчика -> ПКМ по профилю -> "Копировать ID пользователя"
+            // ВАЖНО: Вы должны состоять на сервере Lanyard: https://discord.gg/lanyard
+            DISCORD_USER_ID: "", // <--- Вставьте сюда ваш Discord ID (или в database.json)
+            DISCORD_TAG: "pruushkaa",
+            DISCORD_POLL_INTERVAL_MS: 15000,
+            DEFAULT_DISCORD_STATUS: "offline",
+            DEFAULT_DISCORD_TEXT: "Автономный режим",
+
+            // Совместимость с предыдущими именами переменных
             DEFAULT_ADMIN_PASSWORD: "admin",
-            DEFAULT_LASTFM_USER: "pruushkaa",
-            DEFAULT_LASTFM_API_KEY: "",
-            DEFAULT_DISCORD_STATUS: "online",
-            DEFAULT_DISCORD_TEXT: "В сети",
-            DEFAULT_DISCORD_ID: "",
+            get DEFAULT_LASTFM_USER() { return this.LASTFM_USER; },
+            get DEFAULT_LASTFM_API_KEY() { return this.LASTFM_API_KEY; },
+            get DEFAULT_DISCORD_ID() { return this.DISCORD_USER_ID; },
+
             SOCIAL_LINKS: {
                 TELEGRAM_PERSONAL: "https://t.me/pruushkaa",
                 TELEGRAM_CHANNEL: "https://t.me/pruuushkaa",
@@ -411,115 +433,97 @@
             const [isPlayingSample, setIsPlayingSample] = useState(false);
             const [loadingSample, setLoadingSample] = useState(false);
             const [sampleUrl, setSampleUrl] = useState(null);
-            const [apiStatus, setApiStatus] = useState('DEMO');
+            const [apiStatus, setApiStatus] = useState('STANDBY'); // 'LIVE' | 'OFFLINE' | 'STANDBY' | 'ERROR'
+            const [errorMsg, setErrorMsg] = useState(null);
             const audioRef = useRef(null);
+
+            const cleanKey = (lastFmApiKey || ARCHIVE_CONFIG.LASTFM_API_KEY || '').trim();
+            const cleanUser = (lastFmUser || ARCHIVE_CONFIG.LASTFM_USER || 'pruushkaa').trim();
 
             const currentTrack = tracks[activeIdx] || tracks[0];
 
             useEffect(() => {
                 let isMounted = true;
 
+                if (!cleanKey) {
+                    if (isMounted) {
+                        setApiStatus('STANDBY');
+                    }
+                    return;
+                }
+
                 const fetchLiveScrobble = async () => {
-                    const cleanKey = (lastFmApiKey || ARCHIVE_CONFIG.DEFAULT_LASTFM_API_KEY || '').trim();
-                    const cleanUser = (lastFmUser || ARCHIVE_CONFIG.DEFAULT_LASTFM_USER || 'pruushkaa').trim();
+                    try {
+                        const url = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${encodeURIComponent(cleanUser)}&api_key=${encodeURIComponent(cleanKey)}&format=json&limit=4`;
+                        const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                        if (!res.ok) {
+                            throw new Error(`Last.fm HTTP ${res.status}`);
+                        }
+                        const data = await res.json();
+                        if (data?.error) {
+                            throw new Error(data.message || 'Ошибка Last.fm API');
+                        }
 
-                    if (cleanKey) {
-                        try {
-                            const url = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${encodeURIComponent(cleanUser)}&api_key=${encodeURIComponent(cleanKey)}&format=json&limit=4`;
-                            const res = await fetch(url);
-                            if (!res.ok) throw new Error('Last.fm HTTP error');
-                            const data = await res.json();
-                            const rawList = data?.recenttracks?.track;
-                            const trackList = Array.isArray(rawList) ? rawList : rawList ? [rawList] : [];
+                        const rawList = data?.recenttracks?.track;
+                        const trackList = Array.isArray(rawList) ? rawList : (rawList ? [rawList] : []);
 
-                            if (trackList.length > 0) {
-                                const parsed = await Promise.all(trackList.slice(0, 4).map(async (item, idx) => {
-                                    const trackName = String(item.name || 'Unknown Track');
-                                    const artistName = String(item.artist?.['#text'] || item.artist?.name || 'Unknown Artist');
-                                    const albumName = String(item.album?.['#text'] || 'Single');
-                                    const isNow = item['@attr']?.nowplaying === 'true';
-                                    const images = Array.isArray(item.image) ? item.image : [];
-                                    let imgUrl = images[3]?.['#text'] || images[2]?.['#text'] || '';
+                        if (trackList.length > 0) {
+                            const parsed = trackList.slice(0, 4).map((item, idx) => {
+                                const trackName = String(item.name || 'Unknown Track');
+                                const artistName = String(item.artist?.['#text'] || item.artist?.name || item.artist || 'Unknown Artist');
+                                const albumName = String(item.album?.['#text'] || item.album?.name || 'Single');
+                                const isNow = Boolean(item['@attr']?.nowplaying === 'true');
+                                const trackUrl = item.url || `https://www.last.fm/music/${encodeURIComponent(artistName)}/_/${encodeURIComponent(trackName)}`;
 
-                                    if (!imgUrl || imgUrl.includes('2a96cbd8b46e442fc41c2b86b821562f')) {
-                                        imgUrl = `https://placehold.co/300x300/FF5722/000000?text=${encodeURIComponent(artistName.slice(0, 12))}`;
-                                    }
+                                // Извлечение обложки максимального доступного разрешения
+                                const images = Array.isArray(item.image) ? item.image : [];
+                                const extraLarge = images.find(img => img.size === 'extralarge')?.['#text'];
+                                const large = images.find(img => img.size === 'large')?.['#text'];
+                                const medium = images.find(img => img.size === 'medium')?.['#text'];
+                                let imgUrl = extraLarge || large || medium || (images[images.length - 1]?.['#text']) || '';
 
-                                    let durationSec = 195;
-                                    let trackTags = ['last.fm', 'scrobble'];
-
-                                    if (idx === 0) {
-                                        try {
-                                            const infoUrl = `https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=${encodeURIComponent(cleanKey)}&artist=${encodeURIComponent(artistName)}&track=${encodeURIComponent(trackName)}&format=json`;
-                                            const infoRes = await fetch(infoUrl);
-                                            if (infoRes.ok) {
-                                                const infoData = await infoRes.json();
-                                                const dMs = Number(infoData?.track?.duration || 0);
-                                                if (dMs > 0) durationSec = Math.round(dMs / 1000);
-                                                const rawTags = infoData?.track?.toptags?.tag;
-                                                const tagArray = Array.isArray(rawTags) ? rawTags : rawTags ? [rawTags] : [];
-                                                if (tagArray.length > 0) {
-                                                    trackTags = tagArray
-                                                        .slice(0, 3)
-                                                        .map(t => String(t?.name || 'music').toLowerCase());
-                                                }
-                                            }
-                                        } catch (e) {}
-                                    }
-
-                                    return {
-                                        name: trackName,
-                                        artist: artistName,
-                                        album: albumName,
-                                        image: imgUrl,
-                                        nowPlaying: isNow,
-                                        duration: durationSec,
-                                        tags: trackTags,
-                                        genreKey: detectGenreKeyFromTags(trackTags),
-                                        timestamp: isNow ? 'NOW SCROBBLING' : (item.date?.['#text'] || 'RECENT')
-                                    };
-                                }));
-
-                                if (isMounted) {
-                                    setTracks(parsed);
-                                    setApiStatus('LIVE');
+                                // Fallback если обложка пустая или дефолтная заглушка Last.fm
+                                if (!imgUrl || imgUrl.includes('2a96cbd8b46e442fc41c2b86b821562f')) {
+                                    imgUrl = `https://placehold.co/300x300/121212/FF5722?text=${encodeURIComponent(artistName.slice(0, 12))}`;
                                 }
-                                return;
+
+                                const dateStr = item.date?.['#text'] || '';
+
+                                return {
+                                    name: trackName,
+                                    artist: artistName,
+                                    album: albumName,
+                                    image: imgUrl,
+                                    nowPlaying: isNow,
+                                    url: trackUrl,
+                                    duration: 195,
+                                    tags: ['last.fm', isNow ? 'live' : 'recent'],
+                                    genreKey: 'electronic',
+                                    timestamp: isNow ? 'NOW SCROBBLING' : (dateStr || 'ПОСЛЕДНИЙ ТРЕК')
+                                };
+                            });
+
+                            if (isMounted) {
+                                setTracks(parsed);
+                                setApiStatus(parsed[0].nowPlaying ? 'LIVE' : 'OFFLINE');
+                                setErrorMsg(null);
                             }
-                        } catch (err) {
-                            if (isMounted) setApiStatus('ERROR');
+                        }
+                    } catch (err) {
+                        if (isMounted) {
+                            setApiStatus('ERROR');
+                            setErrorMsg(err.message || 'Ошибка сети');
                         }
                     }
-
-                    if (window.location.protocol === 'file:') return;
-                    try {
-                        const res = await fetch('/api/now-playing');
-                        if (!res.ok) return;
-                        const data = await res.json();
-                        if (data && data.name && isMounted) {
-                            setTracks(prev => [{
-                                name: data.name,
-                                artist: data.artist || "Unknown Artist",
-                                album: data.album || "Archive",
-                                image: data.image || prev[0].image,
-                                nowPlaying: Boolean(data.nowPlaying),
-                                duration: Number(data.duration) || 180,
-                                tags: Array.isArray(data.tags) && data.tags.length ? data.tags : ["electronic", "archive"],
-                                genreKey: data.genreKey || "electronic",
-                                timestamp: data.nowPlaying ? "LIVE STREAM" : "RECENT"
-                            }, ...prev.slice(1)]);
-                            setApiStatus('PROXY');
-                        }
-                    } catch (err) {}
                 };
 
                 fetchLiveScrobble();
-                const pollTimer = setInterval(fetchLiveScrobble, 15000);
+                const pollTimer = setInterval(fetchLiveScrobble, ARCHIVE_CONFIG.LASTFM_POLL_INTERVAL_MS || 15000);
                 return () => {
                     isMounted = false;
                     clearInterval(pollTimer);
                 };
-            }, [lastFmApiKey, lastFmUser]);
+            }, [cleanKey, cleanUser]);
 
             useEffect(() => {
                 const timer = setInterval(() => {
@@ -569,12 +573,12 @@
                         setSampleUrl(preview);
                         await audio.play();
                         setIsPlayingSample(true);
-                        notify(`PLAYING 30S PREVIEW: ${currentTrack.name.toUpperCase()}`);
+                        notify(`ПЛЕЕР: 30С СЭМПЛ ${currentTrack.name.toUpperCase()}`);
                     } else {
-                        notify("PREVIEW STREAM NOT FOUND ON ITUNES", "warn");
+                        notify("СЭМПЛ НЕ НАЙДЕН В ITUNES", "warn");
                     }
                 } catch (e) {
-                    notify("AUDIO STREAM BLOCKED OR OFFLINE", "warn");
+                    notify("АУДИО-ПОТОК НЕДОСТУПЕН", "warn");
                 } finally {
                     setLoadingSample(false);
                 }
@@ -595,13 +599,14 @@
                     className="brutal-card p-5 relative overflow-hidden transition-all duration-500 text-black"
                     style={{ background: bgGradient }}
                 >
+                    {/* Header */}
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black pb-3 mb-4">
                         <div className="flex items-center gap-2">
                             <span className="inline-flex items-center justify-center w-6 h-6 bg-black text-white font-mono text-xs font-bold">
                                 <i className="fa-brands fa-lastfm text-[#FF5722]"></i>
                             </span>
                             <span className="font-mono font-extrabold text-xs tracking-wider uppercase bg-white px-2 py-0.5 border-2 border-black">
-                                LAST.FM // @{lastFmUser || ARCHIVE_CONFIG.DEFAULT_LASTFM_USER}
+                                LAST.FM // @{cleanUser}
                             </span>
                             <button
                                 onClick={() => {
@@ -611,30 +616,68 @@
                                 className={`font-mono text-[10px] font-extrabold uppercase px-2 py-0.5 border-2 border-black cursor-pointer transition-transform active:translate-y-0.5 ${
                                     apiStatus === 'LIVE'
                                         ? 'bg-[#CCFF00] text-black'
-                                        : apiStatus === 'ERROR'
-                                        ? 'bg-red-500 text-white'
-                                        : 'bg-black text-white hover:bg-[#FF5722]'
+                                        : apiStatus === 'OFFLINE'
+                                        ? 'bg-white text-black'
+                                        : apiStatus === 'STANDBY'
+                                        ? 'bg-[#FF5722] text-white'
+                                        : 'bg-red-500 text-white'
                                 }`}
                                 title="Настроить API-ключ Last.fm"
                             >
                                 {apiStatus === 'LIVE'
-                                    ? '● API: LIVE'
-                                    : apiStatus === 'PROXY'
-                                    ? '● VPS PROXY'
-                                    : apiStatus === 'ERROR'
-                                    ? '▲ ОШИБКА КЛЮЧА'
-                                    : '⚙ API КЛЮЧ'}
+                                    ? '● LAST.FM: LIVE'
+                                    : apiStatus === 'OFFLINE'
+                                    ? '■ LAST.FM: ПОСЛЕДНИЙ ТРЕК'
+                                    : apiStatus === 'STANDBY'
+                                    ? '⚙ НУЖЕН КЛЮЧ API'
+                                    : '▲ ОШИБКА API'}
                             </button>
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold bg-[#CCFF00] text-black px-2.5 py-0.5 border-2 border-black">
-                                <span className="w-2 h-2 rounded-full bg-black animate-ping"></span>
-                                {currentTrack.nowPlaying ? "NOW SCROBBLING" : "ARCHIVED TRACK"}
+                            <span className={`inline-flex items-center gap-1.5 font-mono text-[11px] font-bold px-2.5 py-0.5 border-2 border-black ${
+                                currentTrack.nowPlaying ? 'bg-[#CCFF00] text-black' : 'bg-white text-neutral-800'
+                            }`}>
+                                <span className={`w-2 h-2 rounded-full ${
+                                    currentTrack.nowPlaying ? 'bg-black animate-ping' : 'bg-neutral-500'
+                                }`}></span>
+                                {currentTrack.nowPlaying ? "СЕЙЧАС ИГРАЕТ // NOW PLAYING" : "ПОСЛЕДНИЙ ТРЕК // OFFLINE"}
                             </span>
                         </div>
                     </div>
 
+                    {/* Standby Banner if no API key */}
+                    {apiStatus === 'STANDBY' && (
+                        <div className="bg-[#FF5722] text-white border-2 border-black p-3 mb-4 font-mono text-xs shadow-[3px_3px_0px_#000]">
+                            <div className="flex items-center gap-2 mb-1">
+                                <i className="fa-solid fa-triangle-exclamation text-yellow-300"></i>
+                                <span className="font-extrabold uppercase">API-КЛЮЧ LAST.FM НЕ НАСТРОЕН</span>
+                            </div>
+                            <p className="text-[11px] font-normal leading-relaxed text-neutral-100">
+                                Для живого отслеживания треков укажите ключ в <code>ARCHIVE_CONFIG.LASTFM_API_KEY</code> или в <code>database.json</code>.
+                            </p>
+                            <div className="mt-2.5 flex flex-wrap gap-2">
+                                <a
+                                    href="https://www.last.fm/api/account/create"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="bg-black text-[#CCFF00] px-2.5 py-1 text-[10px] uppercase font-extrabold border border-black hover:bg-white hover:text-black inline-flex items-center gap-1"
+                                >
+                                    <i className="fa-solid fa-key"></i> Получить ключ бесплатно
+                                </a>
+                                {isAdmin && (
+                                    <button
+                                        onClick={onOpenAdmin}
+                                        className="bg-white text-black px-2.5 py-1 text-[10px] uppercase font-extrabold border border-black hover:bg-[#CCFF00]"
+                                    >
+                                        Ввести в настройках сайта
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Main Track Card */}
                     <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                         <div className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 border-3 border-black shadow-[4px_4px_0px_#000] bg-white overflow-hidden group">
                             <img
@@ -642,7 +685,7 @@
                                 alt={currentTrack.name}
                                 onError={(e) => {
                                     e.target.onerror = null;
-                                    e.target.src = "https://placehold.co/300x300/FF5722/000000?text=LAST.FM";
+                                    e.target.src = "https://placehold.co/300x300/121212/FF5722?text=NO+COVER";
                                 }}
                                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                             />
@@ -662,25 +705,38 @@
                         </div>
 
                         <div className="flex-1 min-w-0 w-full">
-                            <div className="overflow-hidden border-2 border-black bg-white px-3 py-1.5 shadow-[3px_3px_0px_#000] mb-2">
-                                {isLongTitle ? (
-                                    <div className="animate-marquee">
-                                        <span className="font-extrabold text-lg sm:text-xl tracking-tight mr-8">
-                                            {currentTrack.name} — {currentTrack.artist}
-                                        </span>
-                                        <span className="font-extrabold text-lg sm:text-xl tracking-tight mr-8">
-                                            {currentTrack.name} — {currentTrack.artist}
-                                        </span>
-                                    </div>
-                                ) : (
-                                    <h3 className="font-extrabold text-lg sm:text-xl tracking-tight truncate">
-                                        {currentTrack.name}
-                                    </h3>
+                            <div className="overflow-hidden border-2 border-black bg-white px-3 py-1.5 shadow-[3px_3px_0px_#000] mb-2 flex items-center justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                    {isLongTitle ? (
+                                        <div className="animate-marquee">
+                                            <span className="font-extrabold text-lg sm:text-xl tracking-tight mr-8">
+                                                {currentTrack.name} — {currentTrack.artist}
+                                            </span>
+                                            <span className="font-extrabold text-lg sm:text-xl tracking-tight mr-8">
+                                                {currentTrack.name} — {currentTrack.artist}
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <h3 className="font-extrabold text-lg sm:text-xl tracking-tight truncate">
+                                            {currentTrack.name}
+                                        </h3>
+                                    )}
+                                </div>
+                                {currentTrack.url && (
+                                    <a
+                                        href={currentTrack.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="shrink-0 text-black hover:text-[#FF5722] p-1"
+                                        title="Открыть трек на Last.fm"
+                                    >
+                                        <i className="fa-solid fa-arrow-up-right-from-square text-sm"></i>
+                                    </a>
                                 )}
                             </div>
 
                             <p className="font-mono text-xs sm:text-sm font-bold text-neutral-900 truncate mb-2">
-                                BY <span className="underline decoration-2">{currentTrack.artist}</span> // ALBUM: {currentTrack.album}
+                                АРТИСТ: <span className="underline decoration-2">{currentTrack.artist}</span> // АЛЬБОМ: {currentTrack.album}
                             </p>
 
                             <div className="flex flex-wrap gap-1.5 mb-3">
@@ -709,6 +765,7 @@
                         </div>
                     </div>
 
+                    {/* Footer Controls */}
                     <div className="mt-4 pt-3 border-t-2 border-black flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2">
                             <button
@@ -720,7 +777,7 @@
                                 }`}
                             >
                                 <i className={`fa-solid ${loadingSample ? 'fa-spinner fa-spin' : isPlayingSample ? 'fa-pause' : 'fa-play'}`}></i>
-                                {loadingSample ? "FETCHING..." : isPlayingSample ? "STOP 30S SAMPLE" : "LISTEN 30S SAMPLE"}
+                                {loadingSample ? "ЗАГРУЗКА..." : isPlayingSample ? "СТОП 30С СЭМПЛ" : "СЛУШАТЬ 30С СЭМПЛ"}
                             </button>
 
                             <button
@@ -731,9 +788,9 @@
                                 }}
                                 onMouseEnter={() => sfx.playHover()}
                                 className="brutal-btn bg-white text-black px-3 py-1.5 font-mono text-xs font-bold uppercase"
-                                title="Switch Recent Scrobble"
+                                title="Переключить трек"
                             >
-                                <i className="fa-solid fa-forward-step mr-1"></i> NEXT TRACK
+                                <i className="fa-solid fa-forward-step mr-1"></i> СЛЕДУЮЩИЙ ТРЕК
                             </button>
                         </div>
 
@@ -746,14 +803,16 @@
                             className="brutal-btn bg-black text-white px-3 py-1.5 font-mono text-xs font-bold uppercase"
                         >
                             <i className={`fa-solid ${showHistory ? 'fa-chevron-up' : 'fa-clock-rotate-left'} mr-1.5`}></i>
-                            {showHistory ? "HIDE LOG" : "SCROBBLE LOG"}
+                            {showHistory ? "СКРЫТЬ ИСТОРИЮ" : "ИСТОРИЯ СКРОББЛОВ"}
                         </button>
                     </div>
 
+                    {/* Scrobble History */}
                     {showHistory && (
                         <div className="mt-3 pt-3 border-t-2 border-black bg-white/90 p-3 border-2 space-y-2 font-mono text-xs">
-                            <div className="font-extrabold uppercase text-[11px] text-neutral-600 mb-1">
-                                RECENTLY ARCHIVED SCROBBLES (CLICK TO INSPECT):
+                            <div className="font-extrabold uppercase text-[11px] text-neutral-600 mb-1 flex items-center justify-between">
+                                <span>ПОСЛЕДНИЕ СКРОББЛЫ (КЛИКНИ ДЛЯ ПЕРЕКЛЮЧЕНИЯ):</span>
+                                <span className="text-[10px] text-neutral-500">{tracks.length} ТРЕКА</span>
                             </div>
                             {tracks.map((t, idx) => (
                                 <div
@@ -777,6 +836,223 @@
                             ))}
                         </div>
                     )}
+                </div>
+            );
+        };
+
+        const DiscordWidget = ({ discordId, discordTag, isAdmin, onOpenAdmin, notify }) => {
+            const [status, setStatus] = useState('offline');
+            const [customText, setCustomText] = useState(ARCHIVE_CONFIG.DEFAULT_DISCORD_TEXT || 'Автономный режим');
+            const [activity, setActivity] = useState(null);
+            const [spotify, setSpotify] = useState(null);
+            const [avatarUrl, setAvatarUrl] = useState(null);
+            const [isLive, setIsLive] = useState(false);
+            const [copied, setCopied] = useState(false);
+
+            const cleanId = (discordId || ARCHIVE_CONFIG.DISCORD_USER_ID || '').trim();
+
+            useEffect(() => {
+                let isMounted = true;
+                if (!cleanId) {
+                    if (isMounted) {
+                        setIsLive(false);
+                    }
+                    return;
+                }
+
+                const fetchLanyard = async () => {
+                    try {
+                        const res = await fetch(`https://api.lanyard.rest/v1/users/${encodeURIComponent(cleanId)}`);
+                        if (!res.ok) {
+                            if (isMounted) {
+                                setIsLive(false);
+                            }
+                            return;
+                        }
+                        const json = await res.json();
+                        const d = json?.data;
+                        if (d && isMounted) {
+                            setIsLive(true);
+                            if (d.discord_status) setStatus(d.discord_status);
+
+                            // Discord avatar
+                            if (d.discord_user?.avatar) {
+                                const ext = d.discord_user.avatar.startsWith('a_') ? 'gif' : 'png';
+                                setAvatarUrl(`https://cdn.discordapp.com/avatars/${d.discord_user.id}/${d.discord_user.avatar}.${ext}?size=128`);
+                            }
+
+                            // Custom Status (activity type 4)
+                            const customAct = d.activities?.find(a => a.type === 4);
+                            if (customAct) {
+                                let cStr = '';
+                                if (customAct.emoji?.name) cStr += `${customAct.emoji.name} `;
+                                if (customAct.state) cStr += customAct.state;
+                                setCustomText(cStr.trim() || 'В сети');
+                            } else {
+                                setCustomText(d.discord_status === 'offline' ? 'Офлайн' : 'В сети');
+                            }
+
+                            // Spotify Activity
+                            if (d.spotify) {
+                                setSpotify({
+                                    song: d.spotify.song,
+                                    artist: d.spotify.artist,
+                                    album: d.spotify.album,
+                                    albumArt: d.spotify.album_art_url,
+                                    trackId: d.spotify.track_id
+                                });
+                            } else {
+                                setSpotify(null);
+                            }
+
+                            // Other activity (Game, stream, app)
+                            const nonCustom = d.activities?.filter(a => a.type !== 4 && a.type !== 2) || [];
+                            if (nonCustom.length > 0) {
+                                const act = nonCustom[0];
+                                let aStr = act.name;
+                                if (act.details) aStr += ` // ${act.details}`;
+                                else if (act.state) aStr += ` (${act.state})`;
+                                setActivity(aStr);
+                            } else {
+                                setActivity(null);
+                            }
+                        }
+                    } catch (e) {
+                        if (isMounted) {
+                            setIsLive(false);
+                        }
+                    }
+                };
+
+                fetchLanyard();
+                const timer = setInterval(fetchLanyard, ARCHIVE_CONFIG.DISCORD_POLL_INTERVAL_MS || 15000);
+                return () => {
+                    isMounted = false;
+                    clearInterval(timer);
+                };
+            }, [cleanId]);
+
+            const handleCopy = () => {
+                sfx.playSuccess();
+                triggerGlitchSpike(1.2);
+                copyTextToClipboard(discordTag || "pruushkaa");
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2500);
+                notify("DISCORD ТЕГ СКОПИРОВАН В БУФЕР!");
+            };
+
+            const badgeMap = {
+                online: { label: 'В СЕТИ // ONLINE', bg: 'bg-[#CCFF00] text-black', dot: 'bg-green-600 animate-ping' },
+                idle: { label: 'ОТОШЕЛ // IDLE', bg: 'bg-amber-300 text-black', dot: 'bg-amber-600' },
+                dnd: { label: 'НЕ БЕСПОКОИТЬ', bg: 'bg-[#FF5722] text-white', dot: 'bg-white' },
+                offline: { label: 'ОФЛАЙН // OFFLINE', bg: 'bg-neutral-300 text-black', dot: 'bg-neutral-600' }
+            };
+            const st = badgeMap[status] || badgeMap.offline;
+
+            return (
+                <div className="lg:col-span-4 brutal-card p-5 bg-[#B388FF] text-black flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-3">
+                            <span className="font-mono text-xs font-extrabold uppercase bg-white px-2 py-0.5 border-2 border-black">
+                                COMMS // DISCORD
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                                {isLive ? (
+                                    <span className="text-[9px] bg-black text-[#CCFF00] font-mono font-bold px-1.5 py-0.5 border border-black flex items-center gap-1" title="Lanyard Gateway подключен">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[#CCFF00] animate-ping"></span>
+                                        LANYARD LIVE
+                                    </span>
+                                ) : (
+                                    <span className="text-[9px] bg-white text-black font-mono font-bold px-1.5 py-0.5 border border-black" title="Автономный режим">
+                                        {cleanId ? 'STANDBY' : 'NO ID'}
+                                    </span>
+                                )}
+                                {isAdmin && (
+                                    <button
+                                        onClick={() => {
+                                            sfx.playClick();
+                                            onOpenAdmin();
+                                        }}
+                                        className="bg-black text-[#CCFF00] px-1.5 py-0.5 font-mono text-[10px] font-bold border border-black hover:bg-[#FF5722] hover:text-white"
+                                        title="Настроить Discord ID"
+                                    >
+                                        <i className="fa-solid fa-pen"></i>
+                                    </button>
+                                )}
+                                <i className="fa-brands fa-discord text-2xl"></i>
+                            </div>
+                        </div>
+
+                        <div className="bg-white border-3 border-black p-3 shadow-[4px_4px_0px_#000] font-mono mb-3">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    {avatarUrl ? (
+                                        <img src={avatarUrl} alt="Avatar" className="w-7 h-7 rounded-full border-2 border-black object-cover" />
+                                    ) : (
+                                        <div className="w-7 h-7 bg-neutral-200 border-2 border-black rounded-full flex items-center justify-center text-xs">
+                                            <i className="fa-solid fa-user text-neutral-600"></i>
+                                        </div>
+                                    )}
+                                    <span className="text-lg font-extrabold tracking-tight">@{discordTag}</span>
+                                </div>
+                                <span className={`inline-flex items-center gap-1.5 text-[10px] font-extrabold px-2 py-0.5 border-2 border-black ${st.bg}`}>
+                                    <span className={`w-2 h-2 rounded-full ${st.dot}`}></span>
+                                    {st.label}
+                                </span>
+                            </div>
+
+                            <div className="border-t-2 border-black pt-2 mt-1 text-xs">
+                                <div className="text-[10px] font-extrabold uppercase text-neutral-500 mb-0.5 flex items-center justify-between">
+                                    <span>СТАТУС:</span>
+                                    {isLive && <span className="text-[9px] text-green-700 font-bold">● LIVE СИНХРОНИЗАЦИЯ</span>}
+                                </div>
+                                <div className="font-bold text-black bg-[#F4F0EA] border-2 border-black px-2.5 py-1.5 flex items-start gap-2">
+                                    <i className="fa-solid fa-comment-dots text-[#FF5722] mt-0.5"></i>
+                                    <span className="leading-snug break-words">{customText}</span>
+                                </div>
+
+                                {spotify && (
+                                    <div className="mt-2 font-mono bg-black text-[#1DB954] border-2 border-black p-2 flex items-center gap-2 shadow-[2px_2px_0px_#000]">
+                                        {spotify.albumArt && (
+                                            <img src={spotify.albumArt} alt={spotify.album} className="w-7 h-7 border border-[#1DB954] object-cover shrink-0" />
+                                        )}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-[9px] uppercase font-bold text-neutral-400 flex items-center gap-1">
+                                                <i className="fa-brands fa-spotify text-[#1DB954]"></i> SPOTIFY // СЛУШАЕТ:
+                                            </div>
+                                            <div className="text-[11px] font-extrabold text-white truncate">
+                                                {spotify.song} — {spotify.artist}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activity && (
+                                    <div className="mt-1.5 font-bold text-[11px] bg-black text-[#CCFF00] px-2 py-1 border border-black truncate">
+                                        <i className="fa-solid fa-gamepad mr-1.5 text-[#FF5722]"></i>
+                                        {activity}
+                                    </div>
+                                )}
+
+                                {!cleanId && (
+                                    <div className="mt-2 text-[10px] bg-amber-100 border border-black p-1.5 text-black">
+                                        💡 <strong>Подсказка:</strong> Укажите ваш Discord ID в <code>ARCHIVE_CONFIG.DISCORD_USER_ID</code> для живого статуса.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={handleCopy}
+                        onMouseEnter={() => sfx.playHover()}
+                        className={`brutal-btn w-full py-2.5 font-mono text-xs font-extrabold uppercase flex items-center justify-center gap-2 ${
+                            copied ? 'bg-[#CCFF00] text-black' : 'bg-black text-white'
+                        }`}
+                    >
+                        <i className={`fa-solid ${copied ? 'fa-check' : 'fa-copy'}`}></i>
+                        {copied ? "СКОПИРОВАНО В БУФЕР!" : "СКОПИРОВАТЬ DISCORD ТЕГ"}
+                    </button>
                 </div>
             );
         };
@@ -2339,51 +2615,11 @@
                 }
             });
 
-            const [lastFmApiKey, setLastFmApiKey] = useState(() => {
-                try {
-                    return localStorage.getItem('pruushkaa_lastfm_key') || ARCHIVE_CONFIG.DEFAULT_LASTFM_API_KEY;
-                } catch (e) {
-                    return ARCHIVE_CONFIG.DEFAULT_LASTFM_API_KEY;
-                }
-            });
-
-            const [lastFmUser, setLastFmUser] = useState(() => {
-                try {
-                    return localStorage.getItem('pruushkaa_lastfm_user') || ARCHIVE_CONFIG.DEFAULT_LASTFM_USER;
-                } catch (e) {
-                    return ARCHIVE_CONFIG.DEFAULT_LASTFM_USER;
-                }
-            });
-
-            const [discordStatus, setDiscordStatus] = useState(() => {
-                try {
-                    return localStorage.getItem('pruushkaa_discord_status') || ARCHIVE_CONFIG.DEFAULT_DISCORD_STATUS;
-                } catch (e) {
-                    return ARCHIVE_CONFIG.DEFAULT_DISCORD_STATUS;
-                }
-            });
-
-            const [discordText, setDiscordText] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('pruushkaa_discord_text');
-                    if (!saved || saved.includes("СРП")) {
-                        return ARCHIVE_CONFIG.DEFAULT_DISCORD_TEXT;
-                    }
-                    return saved;
-                } catch (e) {
-                    return ARCHIVE_CONFIG.DEFAULT_DISCORD_TEXT;
-                }
-            });
-
-            const [discordId, setDiscordId] = useState(() => {
-                try {
-                    return localStorage.getItem('pruushkaa_discord_id') || ARCHIVE_CONFIG.DEFAULT_DISCORD_ID;
-                } catch (e) {
-                    return ARCHIVE_CONFIG.DEFAULT_DISCORD_ID;
-                }
-            });
-
-            const [liveDiscordActivity, setLiveDiscordActivity] = useState(null);
+            const [lastFmApiKey, setLastFmApiKey] = useState(ARCHIVE_CONFIG.LASTFM_API_KEY || '');
+            const [lastFmUser, setLastFmUser] = useState(ARCHIVE_CONFIG.LASTFM_USER || 'pruushkaa');
+            const [discordStatus, setDiscordStatus] = useState(ARCHIVE_CONFIG.DEFAULT_DISCORD_STATUS || 'offline');
+            const [discordText, setDiscordText] = useState(ARCHIVE_CONFIG.DEFAULT_DISCORD_TEXT || 'Автономный режим');
+            const [discordId, setDiscordId] = useState(ARCHIVE_CONFIG.DISCORD_USER_ID || '');
 
             const [photos, setPhotos] = useState(() => {
                 try {
@@ -2443,27 +2679,22 @@
                                     setAdminPass(data.adminPass);
                                     try { localStorage.setItem('pruushkaa_admin_pass', data.adminPass); } catch (e) {}
                                 }
-                                if (data.lastFmApiKey !== undefined) {
+                                if (data.lastFmApiKey !== undefined && data.lastFmApiKey !== '') {
                                     setLastFmApiKey(data.lastFmApiKey);
-                                    try { localStorage.setItem('pruushkaa_lastfm_key', data.lastFmApiKey); } catch (e) {}
                                 }
-                                if (data.lastFmUser) {
+                                if (data.lastFmUser && data.lastFmUser !== '') {
                                     setLastFmUser(data.lastFmUser);
-                                    try { localStorage.setItem('pruushkaa_lastfm_user', data.lastFmUser); } catch (e) {}
                                 }
                                 if (data.discord) {
                                     if (data.discord.status) {
                                         setDiscordStatus(data.discord.status);
-                                        try { localStorage.setItem('pruushkaa_discord_status', data.discord.status); } catch (e) {}
                                     }
                                     if (data.discord.text) {
                                         setDiscordText(data.discord.text);
-                                        try { localStorage.setItem('pruushkaa_discord_text', data.discord.text); } catch (e) {}
                                     }
                                     const dId = data.discord.discordId !== undefined ? data.discord.discordId : data.discord.id;
-                                    if (dId !== undefined) {
+                                    if (dId !== undefined && dId !== '') {
                                         setDiscordId(dId);
-                                        try { localStorage.setItem('pruushkaa_discord_id', dId); } catch (e) {}
                                     }
                                 } else if (data.discordStatus) {
                                     setDiscordText(data.discordStatus);
@@ -2548,38 +2779,6 @@
                 }
             }, [photos, wikiArticles, discordStatus, discordText, discordId, isAdmin, adminPass, lastFmApiKey, lastFmUser, notify]);
 
-            useEffect(() => {
-                if (!discordId) {
-                    setLiveDiscordActivity(null);
-                    return;
-                }
-                let isMounted = true;
-                const fetchLanyard = async () => {
-                    try {
-                        const res = await fetch(`https://api.lanyard.rest/v1/users/${encodeURIComponent(discordId.trim())}`);
-                        if (!res.ok) return;
-                        const json = await res.json();
-                        const d = json?.data;
-                        if (d && isMounted) {
-                            if (d.discord_status) setDiscordStatus(d.discord_status);
-                            const customSt = d.activities?.find(a => a.type === 4);
-                            const gameAct = d.activities?.find(a => a.type !== 4);
-                            if (customSt?.state) setDiscordText(customSt.state);
-                            if (gameAct?.name) {
-                                setLiveDiscordActivity(`${gameAct.name}${gameAct.details ? ` // ${gameAct.details}` : ''}`);
-                            } else {
-                                setLiveDiscordActivity(null);
-                            }
-                        }
-                    } catch (e) {}
-                };
-                fetchLanyard();
-                const timer = setInterval(fetchLanyard, 20000);
-                return () => {
-                    isMounted = false;
-                    clearInterval(timer);
-                };
-            }, [discordId]);
 
             useEffect(() => {
                 if (darkMode) {
@@ -2963,79 +3162,13 @@
                             </div>
                         </div>
 
-                        <div className="lg:col-span-4 brutal-card p-5 bg-[#B388FF] text-black flex flex-col justify-between">
-                            <div>
-                                <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-3">
-                                    <span className="font-mono text-xs font-extrabold uppercase bg-white px-2 py-0.5 border-2 border-black">
-                                        COMMS // DISCORD
-                                    </span>
-                                    <div className="flex items-center gap-1.5">
-                                        {isAdmin && (
-                                            <button
-                                                onClick={() => {
-                                                    sfx.playClick();
-                                                    setAdminModalOpen(true);
-                                                }}
-                                                className="bg-black text-[#CCFF00] px-1.5 py-0.5 font-mono text-[10px] font-bold border border-black hover:bg-[#FF5722] hover:text-white"
-                                                title="Изменить статус Discord"
-                                            >
-                                                <i className="fa-solid fa-pen"></i>
-                                            </button>
-                                        )}
-                                        <i className="fa-brands fa-discord text-2xl"></i>
-                                    </div>
-                                </div>
-
-                                <div className="bg-white border-3 border-black p-3 shadow-[4px_4px_0px_#000] font-mono mb-3">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-lg font-extrabold tracking-tight">@{discordTag}</span>
-                                        {(() => {
-                                            const badgeMap = {
-                                                online: { label: 'В СЕТИ // ONLINE', bg: 'bg-[#CCFF00] text-black', dot: 'bg-green-600 animate-ping' },
-                                                idle: { label: 'ОТОШЕЛ // IDLE', bg: 'bg-amber-300 text-black', dot: 'bg-amber-600' },
-                                                dnd: { label: 'НЕ БЕСПОКОИТЬ', bg: 'bg-[#FF5722] text-white', dot: 'bg-white' },
-                                                offline: { label: 'OFFLINE', bg: 'bg-neutral-300 text-black', dot: 'bg-neutral-600' }
-                                            };
-                                            const st = badgeMap[discordStatus] || badgeMap.online;
-                                            return (
-                                                <span className={`inline-flex items-center gap-1.5 text-[10px] font-extrabold px-2 py-0.5 border-2 border-black ${st.bg}`}>
-                                                    <span className={`w-2 h-2 rounded-full ${st.dot}`}></span>
-                                                    {st.label}
-                                                </span>
-                                            );
-                                        })()}
-                                    </div>
-
-                                    <div className="border-t-2 border-black pt-2 mt-1 text-xs">
-                                        <div className="text-[10px] font-extrabold uppercase text-neutral-500 mb-0.5 flex items-center justify-between">
-                                            <span>ТЕКУЩИЙ СТАТУС:</span>
-                                            {discordId && <span className="text-[9px] bg-black text-[#CCFF00] px-1">LANYARD LIVE</span>}
-                                        </div>
-                                        <div className="font-bold text-black bg-[#F4F0EA] border-2 border-black px-2.5 py-1.5 flex items-start gap-2">
-                                            <i className="fa-solid fa-comment-dots text-[#FF5722] mt-0.5"></i>
-                                            <span className="leading-snug break-words">{discordText}</span>
-                                        </div>
-                                        {liveDiscordActivity && (
-                                            <div className="mt-1.5 font-bold text-[11px] bg-black text-[#CCFF00] px-2 py-1 border border-black truncate">
-                                                <i className="fa-solid fa-gamepad mr-1.5 text-[#FF5722]"></i>
-                                                {liveDiscordActivity}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={handleCopyDiscord}
-                                onMouseEnter={() => sfx.playHover()}
-                                className={`brutal-btn w-full py-2.5 font-mono text-xs font-extrabold uppercase flex items-center justify-center gap-2 ${
-                                    discordCopied ? 'bg-[#CCFF00] text-black' : 'bg-black text-white'
-                                }`}
-                            >
-                                <i className={`fa-solid ${discordCopied ? 'fa-check' : 'fa-copy'}`}></i>
-                                {discordCopied ? "COPIED TO CLIPBOARD!" : "COPY DISCORD TAG"}
-                            </button>
-                        </div>
+                        <DiscordWidget
+                            discordId={discordId}
+                            discordTag={ARCHIVE_CONFIG.DISCORD_TAG || "pruushkaa"}
+                            isAdmin={isAdmin}
+                            onOpenAdmin={() => setAdminModalOpen(true)}
+                            notify={notify}
+                        />
                     </div>
 
                     <div className="mb-6">
