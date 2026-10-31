@@ -30,6 +30,7 @@ function readDB() {
     return {
         photos: Array.isArray(parsed.photos) ? parsed.photos : [],
         wiki: Array.isArray(parsed.wiki) ? parsed.wiki : (Array.isArray(parsed.articles) ? parsed.articles : []),
+        tracks: Array.isArray(parsed.tracks) ? parsed.tracks : [],
         discord: {
             status: parsed.discord?.status || 'online',
             text: parsed.discord?.text || 'В сети',
@@ -47,6 +48,7 @@ function writeDB(data) {
         const fullDB = {
             photos: Array.isArray(data.photos) ? data.photos : [],
             wiki: Array.isArray(data.wiki) ? data.wiki : (Array.isArray(data.articles) ? data.articles : []),
+            tracks: Array.isArray(data.tracks) ? data.tracks : [],
             discord: {
                 status: data.discord?.status || 'online',
                 text: data.discord?.text || 'В сети',
@@ -110,6 +112,7 @@ app.post('/api/data', (req, res) => {
     const merged = {
         photos: Array.isArray(newData.photos) ? newData.photos : currentDB.photos,
         wiki: Array.isArray(newData.wiki) ? newData.wiki : (Array.isArray(newData.articles) ? newData.articles : currentDB.wiki),
+        tracks: Array.isArray(newData.tracks) ? newData.tracks : (Array.isArray(currentDB.tracks) ? currentDB.tracks : []),
         discord: {
             status: newDiscord.status || currentDB.discord.status || 'online',
             text: newDiscord.text !== undefined ? newDiscord.text : (newData.discordStatus || currentDB.discord.text || 'В сети'),

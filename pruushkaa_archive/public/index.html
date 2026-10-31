@@ -2852,7 +2852,7 @@
         /* ==========================================================================
            GPX ROUTE ARCHIVE & INTERACTIVE MAP MODULE (LEAFLET + LEAFLET-GPX)
            ========================================================================== */
-        const GpxRouteArchive = ({ tracks, notify, darkMode }) => {
+        const GpxRouteArchive = ({ tracks, setTracks, notify, syncDatabase, isAdmin, onOpenAdmin, darkMode }) => {
             const [localTracks, setLocalTracks] = useState([]);
             const [selectedTrackId, setSelectedTrackId] = useState(null);
             const [selectedCategory, setSelectedCategory] = useState('ВСЕ');
@@ -2863,6 +2863,15 @@
             const [showStatsModal, setShowStatsModal] = useState(false);
             const [tileMode, setTileMode] = useState('auto'); // 'auto', 'dark', 'light'
 
+            // Admin creation form state
+            const [isAdding, setIsAdding] = useState(false);
+            const [formTitle, setFormTitle] = useState('');
+            const [formDate, setFormDate] = useState('');
+            const [formTags, setFormTags] = useState('gravel, off-road');
+            const [formDesc, setFormDesc] = useState('');
+            const [formGpxRaw, setFormGpxRaw] = useState('');
+            const [formTelemetry, setFormTelemetry] = useState(null);
+
             // Active track live telemetry calculated by L.GPX
             const [activeTelemetry, setActiveTelemetry] = useState(null);
 
@@ -2872,6 +2881,49 @@
             const gpxLayerRef = useRef(null);
             const markersLayerRef = useRef(null);
             const fileInputRef = useRef(null);
+            const adminFileInputRef = useRef(null);
+
+            // Calculate telemetry helper for raw XML
+            const calculateGpxTelemetry = (xml) => {
+                const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"[^>]*>([\s\S]*?)<\/trkpt>/gi;
+                let match;
+                const points = [];
+                while ((match = trkptRegex.exec(xml)) !== null) {
+                    const lat = parseFloat(match[1]);
+                    const lon = parseFloat(match[2]);
+                    const inner = match[3];
+                    const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/i);
+                    const timeMatch = inner.match(/<time>([^<]+)<\/time>/i);
+                    const ele = eleMatch ? parseFloat(eleMatch[1]) : null;
+                    const time = timeMatch ? new Date(timeMatch[1]).getTime() : null;
+                    if (!isNaN(lat) && !isNaN(lon)) points.push({ lat, lon, ele, time });
+                }
+                if (points.length < 2) return null;
+                let totalDist = 0;
+                let elevationGain = 0;
+                const toRad = x => (x * Math.PI) / 180;
+                for (let i = 1; i < points.length; i++) {
+                    const p1 = points[i - 1];
+                    const p2 = points[i];
+                    const dLat = toRad(p2.lat - p1.lat);
+                    const dLon = toRad(p2.lon - p1.lon);
+                    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(toRad(p1.lat)) * Math.cos(toRad(p2.lat)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                    totalDist += 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    if (p1.ele !== null && p2.ele !== null && p2.ele > p1.ele) elevationGain += (p2.ele - p1.ele);
+                }
+                let movingTimeStr = '--';
+                if (points[0].time && points[points.length - 1].time) {
+                    const totalSec = Math.round((points[points.length - 1].time - points[0].time) / 1000);
+                    const h = Math.floor(totalSec / 3600);
+                    const m = Math.floor((totalSec % 3600) / 60);
+                    movingTimeStr = h > 0 ? `${h}ч ${m}м` : `${m}м`;
+                }
+                return {
+                    distanceKm: parseFloat((totalDist / 1000).toFixed(1)),
+                    elevationGainM: Math.round(elevationGain),
+                    movingTime: movingTimeStr
+                };
+            };
 
             // Combine local (dragged/uploaded) tracks with database manifest
             const allTracks = useMemo(() => {
@@ -3236,6 +3288,106 @@
                 }
             };
 
+            // Admin: Process uploaded GPX for permanent database entry
+            const handleAdminGpxFile = (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const xml = ev.target.result;
+                    setFormGpxRaw(xml);
+                    const stats = calculateGpxTelemetry(xml);
+                    if (stats) setFormTelemetry(stats);
+                    if (!formTitle) {
+                        const baseName = file.name.replace(/\.gpx$/i, '').replace(/[-_]+/g, ' ').toUpperCase();
+                        setFormTitle(baseName);
+                    }
+                    if (!formDate) {
+                        setFormDate(new Date().toISOString().slice(0, 10));
+                    }
+                    notify("GPX ФАЙЛ СЧИТАН И ТЕЛЕМЕТРИЯ РАССЧИТАНА!");
+                };
+                reader.readAsText(file);
+            };
+
+            // Admin: Save new route into permanent database
+            const handleSaveNewRoute = (e) => {
+                e.preventDefault();
+                if (!isAdmin) {
+                    notify("ДОСТУП ЗАПРЕЩЕН: ТРЕБУЕТСЯ ПАРОЛЬ АДМИНИСТРАТОРА", "warn");
+                    onOpenAdmin();
+                    return;
+                }
+                if (!formTitle.trim() || !formGpxRaw.trim()) {
+                    notify("УКАЖИТЕ НАЗВАНИЕ И ВЫБЕРИТЕ .GPX ФАЙЛ!", "warn");
+                    return;
+                }
+                const safeId = `ride-${new Date().toISOString().slice(0, 7)}-${formTitle.toLowerCase().replace(/[^a-z0-9а-яё_-]/gi, '-').slice(0, 24)}`;
+                const parsedTags = formTags.split(',').map(t => t.trim()).filter(Boolean);
+                const createdTrack = {
+                    id: safeId,
+                    title: formTitle.trim(),
+                    date: formDate || new Date().toISOString().slice(0, 10),
+                    file: null,
+                    rawGpx: formGpxRaw,
+                    description: formDesc.trim() || 'Маршрут добавлен через панель управления',
+                    tags: parsedTags.length > 0 ? parsedTags : ['custom', 'route'],
+                    telemetry: formTelemetry,
+                    isCustom: true
+                };
+                const updated = [createdTrack, ...tracks];
+                setTracks(updated);
+                syncDatabase(null, null, null, updated);
+                setSelectedTrackId(safeId);
+                sfx.playSuccess();
+                triggerGlitchSpike(1.2);
+                setFormTitle('');
+                setFormDate('');
+                setFormDesc('');
+                setFormGpxRaw('');
+                setFormTelemetry(null);
+                setIsAdding(false);
+                notify(`МАРШРУТ [${createdTrack.title}] УСПЕШНО СОХРАНЕН В БАЗУ ДАННЫХ!`);
+            };
+
+            // Admin: Delete route from permanent database
+            const handleDeleteRoute = (id) => {
+                if (!isAdmin) {
+                    notify("ТОЛЬКО АДМИНИСТРАТОР МОЖЕТ УДАЛЯТЬ МАРШРУТЫ", "warn");
+                    onOpenAdmin();
+                    return;
+                }
+                sfx.playClick();
+                const updated = tracks.filter(t => t.id !== id);
+                setTracks(updated);
+                syncDatabase(null, null, null, updated);
+                if (selectedTrackId === id) {
+                    setSelectedTrackId(updated[0]?.id || null);
+                }
+                notify(`МАРШРУТ ${id} УДАЛЕН ИЗ БАЗЫ`);
+            };
+
+            // Convert local preview track to permanent database entry
+            const handlePromoteLocalToDatabase = (localItem) => {
+                if (!isAdmin) {
+                    notify("ВОЙДИТЕ В РЕЖИМ АДМИНИСТРАТОРА ДЛЯ СОХРАНЕНИЯ В БАЗУ", "warn");
+                    onOpenAdmin();
+                    return;
+                }
+                const savedTrack = {
+                    ...localItem,
+                    isLocal: false,
+                    tags: (localItem.tags || []).filter(t => t !== 'local' && t !== 'preview').concat(['custom'])
+                };
+                const updated = [savedTrack, ...tracks];
+                setTracks(updated);
+                setLocalTracks(prev => prev.filter(t => t.id !== localItem.id));
+                syncDatabase(null, null, null, updated);
+                setSelectedTrackId(savedTrack.id);
+                sfx.playSuccess();
+                notify(`ТРЕК [${savedTrack.title}] ПЕРЕМЕЩЕН В ПОСТОЯННУЮ БАЗУ ДАННЫХ!`);
+            };
+
             // Current display telemetry (prefer live computed, fallback to manifest)
             const displayTelemetry = activeTelemetry || currentTrack?.telemetry || {
                 distanceKm: '--',
@@ -3260,14 +3412,44 @@
                             <span className="px-2 py-1 bg-[#F4F0EA] border-2 border-black font-bold">
                                 МАРШРУТОВ: {allTracks.length}
                             </span>
+
+                            {isAdmin ? (
+                                <button
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setIsAdding(!isAdding);
+                                    }}
+                                    onMouseEnter={() => sfx.playHover()}
+                                    className={`brutal-btn px-3 py-1 font-extrabold uppercase flex items-center gap-1.5 ${
+                                        isAdding ? 'bg-[#FF5722] text-white' : 'bg-[#CCFF00] text-black'
+                                    }`}
+                                >
+                                    <i className={`fa-solid ${isAdding ? 'fa-xmark' : 'fa-plus'}`}></i>
+                                    <span>{isAdding ? 'ЗАКРЫТЬ ФОРМУ' : '+ ДОБАВИТЬ В БАЗУ'}</span>
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        onOpenAdmin();
+                                    }}
+                                    onMouseEnter={() => sfx.playHover()}
+                                    className="brutal-btn px-3 py-1 bg-neutral-200 text-neutral-800 font-bold uppercase flex items-center gap-1.5"
+                                    title="Войти по паролю для добавления маршрутов в базу"
+                                >
+                                    <i className="fa-solid fa-lock text-[#FF5722]"></i>
+                                    <span>ДОБАВИТЬ В БАЗУ (ADMIN)</span>
+                                </button>
+                            )}
+
                             <button
                                 onClick={() => fileInputRef.current?.click()}
                                 onMouseEnter={() => sfx.playHover()}
-                                className="brutal-btn bg-[#CCFF00] text-black px-3 py-1 font-extrabold uppercase flex items-center gap-1.5"
-                                title="Загрузить локальный .gpx файл с компьютера"
+                                className="brutal-btn bg-[#F4F0EA] text-black px-3 py-1 font-extrabold uppercase flex items-center gap-1.5"
+                                title="Быстрый локальный просмотр .gpx без сохранения в базу"
                             >
-                                <i className="fa-solid fa-file-arrow-up"></i>
-                                <span>ЗАГРУЗИТЬ .GPX</span>
+                                <i className="fa-solid fa-file-arrow-up text-[#FF5722]"></i>
+                                <span>БЫСТРЫЙ ПРОСМОТР</span>
                             </button>
                             <input
                                 ref={fileInputRef}
@@ -3282,6 +3464,95 @@
                             />
                         </div>
                     </div>
+
+                    {/* Admin Add Route Form */}
+                    {isAdmin && isAdding && (
+                        <form
+                            onSubmit={handleSaveNewRoute}
+                            className="mb-5 p-4 bg-[#F4F0EA] border-3 border-black shadow-[4px_4px_0px_#000] space-y-3 font-mono text-xs"
+                        >
+                            <div className="font-extrabold uppercase text-sm border-b-2 border-black pb-1.5 flex items-center justify-between">
+                                <span>СОХРАНЕНИЕ НОВОГО МАРШРУТА В ОБЩУЮ БАЗУ (DATABASE.JSON)</span>
+                                <span className="bg-[#CCFF00] text-black px-2 py-0.5 text-[10px] border border-black font-bold">ПОСТОЯННОЕ ХРАНЕНИЕ</span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="font-bold block mb-1">НАЗВАНИЕ МАРШРУТА:</label>
+                                    <input
+                                        type="text"
+                                        value={formTitle}
+                                        onChange={(e) => setFormTitle(e.target.value)}
+                                        placeholder="Напр: ТРЕЙЛ ПО СОСНОВОМУ БОРУ"
+                                        className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-bold block mb-1">ДАТА ЗАЕЗДА (YYYY-MM-DD):</label>
+                                    <input
+                                        type="date"
+                                        value={formDate}
+                                        onChange={(e) => setFormDate(e.target.value)}
+                                        className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="font-bold block mb-1">ВЫБЕРИТЕ .GPX ФАЙЛ С ПК:</label>
+                                    <input
+                                        ref={adminFileInputRef}
+                                        type="file"
+                                        accept=".gpx,application/gpx+xml"
+                                        onChange={handleAdminGpxFile}
+                                        className="w-full p-1.5 border-2 border-black bg-white font-bold"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-bold block mb-1">ТЕГИ (ЧЕРЕЗ ЗАПЯТУЮ):</label>
+                                    <input
+                                        type="text"
+                                        value={formTags}
+                                        onChange={(e) => setFormTags(e.target.value)}
+                                        placeholder="gravel, off-road, forest"
+                                        className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            {formTelemetry && (
+                                <div className="p-2 bg-white border-2 border-black flex flex-wrap gap-4 text-[11px] font-bold">
+                                    <span>РАСЧИТАННАЯ ТЕЛЕМЕТРИЯ:</span>
+                                    <span className="text-[#FF5722]">Дистанция: {formTelemetry.distanceKm} км</span>
+                                    <span className="text-black">Подъем: +{formTelemetry.elevationGainM} м</span>
+                                    <span className="text-neutral-600">Время: {formTelemetry.movingTime}</span>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="font-bold block mb-1">ОПИСАНИЕ МАРШРУТА:</label>
+                                <textarea
+                                    value={formDesc}
+                                    onChange={(e) => setFormDesc(e.target.value)}
+                                    placeholder="Особенности дорожного покрытия, рельеф, ориентиры, точки отдыха..."
+                                    rows="2"
+                                    className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-1">
+                                <button
+                                    type="submit"
+                                    className="brutal-btn px-5 py-2 bg-[#FF5722] text-white font-extrabold uppercase flex items-center gap-1.5"
+                                >
+                                    <i className="fa-solid fa-floppy-disk"></i> СОХРАНИТЬ В БАЗУ ДАННЫХ САЙТА
+                                </button>
+                            </div>
+                        </form>
+                    )}
 
                     {/* Filter & Categories Bar */}
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-4 font-mono text-xs">
@@ -3435,9 +3706,9 @@
                                                     </p>
                                                 )}
 
-                                                {/* Tags */}
-                                                <div className="flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-neutral-300">
-                                                    <div className="flex flex-wrap gap-1">
+                                                {/* Tags & Actions */}
+                                                <div className="flex flex-wrap items-center justify-between gap-1 pt-1.5 border-t border-neutral-300">
+                                                    <div className="flex flex-wrap items-center gap-1">
                                                         {(item.tags || []).map((t) => (
                                                             <span
                                                                 key={t}
@@ -3446,6 +3717,35 @@
                                                                 #{t}
                                                             </span>
                                                         ))}
+
+                                                        {item.isLocal && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handlePromoteLocalToDatabase(item);
+                                                                }}
+                                                                className="brutal-btn bg-[#CCFF00] text-black px-1.5 py-0.5 text-[9px] font-extrabold uppercase ml-1 flex items-center gap-1"
+                                                                title="Сохранить этот локальный трек в постоянную базу данных сайта"
+                                                            >
+                                                                <i className="fa-solid fa-floppy-disk text-[8px]"></i>
+                                                                <span>В БАЗУ</span>
+                                                            </button>
+                                                        )}
+
+                                                        {isAdmin && !item.isLocal && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDeleteRoute(item.id);
+                                                                }}
+                                                                className="brutal-btn bg-neutral-200 text-[#FF5722] hover:bg-[#FF5722] hover:text-white px-1.5 py-0.5 text-[9px] font-extrabold uppercase ml-1"
+                                                                title="Удалить маршрут из базы"
+                                                            >
+                                                                ✕ УДАЛИТЬ
+                                                            </button>
+                                                        )}
                                                     </div>
                                                     <span className="text-[10px] font-extrabold text-[#FF5722] flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                                                         ПОКАЗАТЬ <i className="fa-solid fa-arrow-right"></i>
@@ -3848,7 +4148,16 @@
             const [adminModalOpen, setAdminModalOpen] = useState(false);
             const [visitorCount, setVisitorCount] = useState(1428);
             const [activeSection, setActiveSection] = useState('HOME');
-            const [tracks, setTracks] = useState(INITIAL_TRACKS);
+            const [tracks, setTracks] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('pruushkaa_tracks_v2');
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                    }
+                } catch (e) {}
+                return INITIAL_TRACKS;
+            });
 
             const [isAdmin, setIsAdmin] = useState(() => {
                 try {
@@ -3993,6 +4302,10 @@
                                     setWikiArticles(normalizedW);
                                     try { localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(normalizedW)); } catch (e) {}
                                 }
+                                if (Array.isArray(data.tracks) && data.tracks.length > 0) {
+                                    setTracks(data.tracks);
+                                    try { localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(data.tracks)); } catch (e) {}
+                                }
                                 if (data.adminPass) {
                                     setAdminPass(data.adminPass);
                                     try { localStorage.setItem('pruushkaa_admin_pass', data.adminPass); } catch (e) {}
@@ -4050,13 +4363,14 @@
                 };
             }, []);
 
-            const syncDatabase = useCallback(async (nextPhotos, nextWiki, customPayload) => {
+            const syncDatabase = useCallback(async (nextPhotos, nextWiki, customPayload, nextTracks) => {
                 if (!isAdmin) {
                     notify("ДЛЯ СИНХРОНИЗАЦИИ ТРЕБУЮТСЯ ПРАВА АДМИНИСТРАТОРА", "warn");
                     return;
                 }
                 const pToSave = (nextPhotos !== null && nextPhotos !== undefined) ? nextPhotos : photos;
                 const wToSave = (nextWiki !== null && nextWiki !== undefined) ? nextWiki : wikiArticles;
+                const tToSave = (nextTracks !== null && nextTracks !== undefined) ? nextTracks : tracks;
                 const discObj = customPayload?.discord || {
                     status: discordStatus,
                     text: discordText,
@@ -4071,6 +4385,7 @@
                 try {
                     localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(pToSave));
                     localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(wToSave));
+                    localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(tToSave));
                     localStorage.setItem('pruushkaa_admin_pass', passToSave);
                     if (keyToSave && keyToSave !== 'ВАШ_LASTFM_API_KEY') {
                         localStorage.setItem('pruushkaa_lastfm_key', keyToSave);
@@ -4101,6 +4416,7 @@
                             photos: pToSave,
                             wiki: wToSave,
                             articles: wToSave,
+                            tracks: tToSave,
                             discord: discObj,
                             discordStatus: discObj.text
                         })
@@ -4408,7 +4724,8 @@
                                     lastFmUser,
                                     discord: { status: discordStatus, text: discordText, discordId },
                                     photos,
-                                    wiki: wikiArticles
+                                    wiki: wikiArticles,
+                                    tracks
                                 }, null, 2);
                                 const blob = new Blob([dump], { type: 'application/json' });
                                 const url = URL.createObjectURL(blob);
@@ -4661,7 +4978,11 @@
                             </div>
                             <GpxRouteArchive
                                 tracks={tracks}
+                                setTracks={setTracks}
                                 notify={notify}
+                                syncDatabase={syncDatabase}
+                                isAdmin={isAdmin}
+                                onOpenAdmin={() => setAdminModalOpen(true)}
                                 darkMode={darkMode}
                             />
                         </div>
