@@ -3337,6 +3337,10 @@
                 };
                 const updated = [createdTrack, ...tracks];
                 setTracks(updated);
+                try {
+                    localStorage.setItem('pruushkaa_tracks_user_modified', 'true');
+                    localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(updated));
+                } catch (e) {}
                 syncDatabase(null, null, null, updated);
                 setSelectedTrackId(safeId);
                 sfx.playSuccess();
@@ -3347,7 +3351,7 @@
                 setFormGpxRaw('');
                 setFormTelemetry(null);
                 setIsAdding(false);
-                notify(`МАРШРУТ [${createdTrack.title}] УСПЕШНО СОХРАНЕН В БАЗУ ДАННЫХ!`);
+                notify(`МАРШРУТ [${createdTrack.title}] УСПЕШНО ДОБАВЛЕН!`);
             };
 
             // Admin: Delete route from permanent database
@@ -3360,11 +3364,15 @@
                 sfx.playClick();
                 const updated = tracks.filter(t => t.id !== id);
                 setTracks(updated);
+                try {
+                    localStorage.setItem('pruushkaa_tracks_user_modified', 'true');
+                    localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(updated));
+                } catch (e) {}
                 syncDatabase(null, null, null, updated);
                 if (selectedTrackId === id) {
                     setSelectedTrackId(updated[0]?.id || null);
                 }
-                notify(`МАРШРУТ ${id} УДАЛЕН ИЗ БАЗЫ`);
+                notify(`МАРШРУТ УДАЛЕН`);
             };
 
             // Convert local preview track to permanent database entry
@@ -3382,10 +3390,50 @@
                 const updated = [savedTrack, ...tracks];
                 setTracks(updated);
                 setLocalTracks(prev => prev.filter(t => t.id !== localItem.id));
+                try {
+                    localStorage.setItem('pruushkaa_tracks_user_modified', 'true');
+                    localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(updated));
+                } catch (e) {}
                 syncDatabase(null, null, null, updated);
                 setSelectedTrackId(savedTrack.id);
                 sfx.playSuccess();
-                notify(`ТРЕК [${savedTrack.title}] ПЕРЕМЕЩЕН В ПОСТОЯННУЮ БАЗУ ДАННЫХ!`);
+                notify(`ТРЕК [${savedTrack.title}] СОХРАНЕН В СПИСОК МАРШРУТОВ!`);
+            };
+
+            // Admin: Export tracks manifest for git commit
+            const handleExportTracksJson = () => {
+                sfx.playSuccess();
+                const exportData = tracks.map(t => ({
+                    id: t.id,
+                    title: t.title,
+                    date: t.date,
+                    file: t.file || `tracks/${t.id}.gpx`,
+                    description: t.description || '',
+                    tags: t.tags || [],
+                    telemetry: t.telemetry || null
+                }));
+                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'tracks.json';
+                a.click();
+                URL.revokeObjectURL(url);
+                notify("ФАЙЛ TRACKS.JSON СКАЧАН! ЗАМЕНИТЕ ЕГО В ПРОЕКТЕ И СДЕЛАЙТЕ GIT PUSH");
+            };
+
+            // Admin: Reset tracks back to initial demo tracks
+            const handleResetTracksToDefault = () => {
+                if (!isAdmin) return;
+                sfx.playClick();
+                if (!window.confirm("Сбросить реестр маршрутов к начальным 3 демо-трекам? Все добавленные и удаленные маршруты вернутся в исходное состояние.")) return;
+                try {
+                    localStorage.removeItem('pruushkaa_tracks_user_modified');
+                    localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(INITIAL_TRACKS));
+                } catch (e) {}
+                setTracks(INITIAL_TRACKS);
+                syncDatabase(null, null, null, INITIAL_TRACKS);
+                notify("МАРШРУТЫ СБРОШЕНЫ К ИСХОДНЫМ ДЕМО-ТРЕКАМ");
             };
 
             // Current display telemetry (prefer live computed, fallback to manifest)
@@ -3414,19 +3462,41 @@
                             </span>
 
                             {isAdmin ? (
-                                <button
-                                    onClick={() => {
-                                        sfx.playClick();
-                                        setIsAdding(!isAdding);
-                                    }}
-                                    onMouseEnter={() => sfx.playHover()}
-                                    className={`brutal-btn px-3 py-1 font-extrabold uppercase flex items-center gap-1.5 ${
-                                        isAdding ? 'bg-[#FF5722] text-white' : 'bg-[#CCFF00] text-black'
-                                    }`}
-                                >
-                                    <i className={`fa-solid ${isAdding ? 'fa-xmark' : 'fa-plus'}`}></i>
-                                    <span>{isAdding ? 'ЗАКРЫТЬ ФОРМУ' : '+ ДОБАВИТЬ В БАЗУ'}</span>
-                                </button>
+                                <>
+                                    <button
+                                        onClick={() => {
+                                            sfx.playClick();
+                                            setIsAdding(!isAdding);
+                                        }}
+                                        onMouseEnter={() => sfx.playHover()}
+                                        className={`brutal-btn px-3 py-1 font-extrabold uppercase flex items-center gap-1.5 ${
+                                            isAdding ? 'bg-[#FF5722] text-white' : 'bg-[#CCFF00] text-black'
+                                        }`}
+                                    >
+                                        <i className={`fa-solid ${isAdding ? 'fa-xmark' : 'fa-plus'}`}></i>
+                                        <span>{isAdding ? 'ЗАКРЫТЬ ФОРМУ' : '+ ДОБАВИТЬ В БАЗУ'}</span>
+                                    </button>
+
+                                    <button
+                                        onClick={handleExportTracksJson}
+                                        onMouseEnter={() => sfx.playHover()}
+                                        className="brutal-btn px-2.5 py-1 bg-white text-black font-extrabold uppercase flex items-center gap-1.5 border-2 border-black"
+                                        title="Скачать tracks.json для коммита в GitHub (чтобы ваши маршруты стали видны всем посетителям сайта)"
+                                    >
+                                        <i className="fa-solid fa-download text-[#FF5722]"></i>
+                                        <span className="hidden sm:inline">СКАЧАТЬ</span> TRACKS.JSON
+                                    </button>
+
+                                    <button
+                                        onClick={handleResetTracksToDefault}
+                                        onMouseEnter={() => sfx.playHover()}
+                                        className="brutal-btn px-2 py-1 bg-neutral-200 text-neutral-700 hover:text-red-600 hover:bg-red-100 font-bold uppercase flex items-center gap-1 border-2 border-black"
+                                        title="Сбросить список маршрутов к начальным 3 демо-трекам"
+                                    >
+                                        <i className="fa-solid fa-rotate-left"></i>
+                                        <span className="hidden md:inline">СБРОС</span>
+                                    </button>
+                                </>
                             ) : (
                                 <button
                                     onClick={() => {
@@ -3472,8 +3542,15 @@
                             className="mb-5 p-4 bg-[#F4F0EA] border-3 border-black shadow-[4px_4px_0px_#000] space-y-3 font-mono text-xs"
                         >
                             <div className="font-extrabold uppercase text-sm border-b-2 border-black pb-1.5 flex items-center justify-between">
-                                <span>СОХРАНЕНИЕ НОВОГО МАРШРУТА В ОБЩУЮ БАЗУ (DATABASE.JSON)</span>
+                                <span>СОХРАНЕНИЕ НОВОГО МАРШРУТА В ОБЩУЮ БАЗУ</span>
                                 <span className="bg-[#CCFF00] text-black px-2 py-0.5 text-[10px] border border-black font-bold">ПОСТОЯННОЕ ХРАНЕНИЕ</span>
+                            </div>
+
+                            <div className="p-2.5 bg-neutral-900 text-white border-2 border-black text-[11px] leading-relaxed flex items-start gap-2">
+                                <i className="fa-solid fa-circle-info text-[#CCFF00] mt-0.5 shrink-0"></i>
+                                <div>
+                                    <b>Хранение данных:</b> При сохранении маршрут мгновенно закрепляется в вашем браузере (LocalStorage) и <b>не пропадет при перезагрузке страницы</b>. Чтобы маршрут стал доступен всем посетителям сайта на GitHub Pages — нажмите «СКАЧАТЬ TRACKS.JSON» и сделайте <code>git push</code> (или закиньте .gpx файл в папку <code>tracks/</code> на компьютере и выполните <code>npm run sync:tracks</code>).
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3719,18 +3796,34 @@
                                                         ))}
 
                                                         {item.isLocal && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handlePromoteLocalToDatabase(item);
-                                                                }}
-                                                                className="brutal-btn bg-[#CCFF00] text-black px-1.5 py-0.5 text-[9px] font-extrabold uppercase ml-1 flex items-center gap-1"
-                                                                title="Сохранить этот локальный трек в постоянную базу данных сайта"
-                                                            >
-                                                                <i className="fa-solid fa-floppy-disk text-[8px]"></i>
-                                                                <span>В БАЗУ</span>
-                                                            </button>
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handlePromoteLocalToDatabase(item);
+                                                                    }}
+                                                                    className="brutal-btn bg-[#CCFF00] text-black px-1.5 py-0.5 text-[9px] font-extrabold uppercase ml-1 flex items-center gap-1"
+                                                                    title="Сохранить этот локальный трек в постоянную базу данных сайта"
+                                                                >
+                                                                    <i className="fa-solid fa-floppy-disk text-[8px]"></i>
+                                                                    <span>В БАЗУ</span>
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setLocalTracks(prev => prev.filter(t => t.id !== item.id));
+                                                                        if (selectedTrackId === item.id) {
+                                                                            setSelectedTrackId(tracks[0]?.id || null);
+                                                                        }
+                                                                    }}
+                                                                    className="brutal-btn bg-neutral-200 text-neutral-600 hover:bg-neutral-300 px-1.5 py-0.5 text-[9px] font-extrabold uppercase ml-1"
+                                                                    title="Убрать локальный предпросмотр"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            </>
                                                         )}
 
                                                         {isAdmin && !item.isLocal && (
@@ -4150,7 +4243,12 @@
             const [activeSection, setActiveSection] = useState('HOME');
             const [tracks, setTracks] = useState(() => {
                 try {
+                    const isUserModified = localStorage.getItem('pruushkaa_tracks_user_modified') === 'true';
                     const saved = localStorage.getItem('pruushkaa_tracks_v2');
+                    if (isUserModified && saved !== null) {
+                        const parsed = JSON.parse(saved);
+                        if (Array.isArray(parsed)) return parsed;
+                    }
                     if (saved) {
                         const parsed = JSON.parse(saved);
                         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -4303,8 +4401,11 @@
                                     try { localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(normalizedW)); } catch (e) {}
                                 }
                                 if (Array.isArray(data.tracks) && data.tracks.length > 0) {
-                                    setTracks(data.tracks);
-                                    try { localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(data.tracks)); } catch (e) {}
+                                    const isUserModified = localStorage.getItem('pruushkaa_tracks_user_modified') === 'true';
+                                    if (!isUserModified) {
+                                        setTracks(data.tracks);
+                                        try { localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(data.tracks)); } catch (e) {}
+                                    }
                                 }
                                 if (data.adminPass) {
                                     setAdminPass(data.adminPass);
@@ -4337,6 +4438,8 @@
                 };
 
                 const loadTracksManifest = async () => {
+                    const isUserModified = localStorage.getItem('pruushkaa_tracks_user_modified') === 'true';
+                    if (isUserModified) return;
                     const endpoints = ['./tracks.json', 'tracks.json', './public/tracks.json', '/tracks.json'];
                     for (const url of endpoints) {
                         try {
@@ -4344,7 +4447,9 @@
                             if (!res.ok) continue;
                             const data = await res.json();
                             if (Array.isArray(data) && isMounted) {
-                                setTracks(data);
+                                if (localStorage.getItem('pruushkaa_tracks_user_modified') !== 'true') {
+                                    setTracks(data);
+                                }
                                 break;
                             }
                         } catch (_) {}
@@ -4355,7 +4460,6 @@
                 loadTracksManifest();
                 const syncInterval = setInterval(() => {
                     loadServerDatabase();
-                    loadTracksManifest();
                 }, 15000);
                 return () => {
                     isMounted = false;
@@ -4386,6 +4490,9 @@
                     localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(pToSave));
                     localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(wToSave));
                     localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(tToSave));
+                    if (nextTracks !== null && nextTracks !== undefined) {
+                        localStorage.setItem('pruushkaa_tracks_user_modified', 'true');
+                    }
                     localStorage.setItem('pruushkaa_admin_pass', passToSave);
                     if (keyToSave && keyToSave !== 'ВАШ_LASTFM_API_KEY') {
                         localStorage.setItem('pruushkaa_lastfm_key', keyToSave);
@@ -4396,7 +4503,7 @@
                 } catch (e) {}
 
                 if (window.location.protocol === 'file:') {
-                    notify("ВНИМАНИЕ: ОТКРЫТ ЛОКАЛЬНЫЙ ФАЙЛ (FILE://). ОТКРОЙ САЙТ ПО ДОМЕНУ ДЛЯ СИНХРОНИЗАЦИИ!", "warn");
+                    notify("ВНИМАНИЕ: ОТКРЫТ ЛОКАЛЬНЫЙ ФАЙЛ (FILE://). СОХРАНЕНО В БРАУЗЕРЕ.", "info");
                     return;
                 }
 
@@ -4426,12 +4533,20 @@
                         notify("СОХРАНЕНО В DATABASE.JSON НА СЕРВЕРЕ (ДЛЯ ВСЕХ УСТРОЙСТВ)!");
                     } else {
                         const errData = await res.json().catch(() => ({}));
-                        notify(`ОШИБКА СЕРВЕРА (${res.status}): ${errData.error || 'ПРОВЕРЬ СЕРВЕР'}`, "warn");
+                        if (res.status === 404 || res.status === 405) {
+                            notify("СОХРАНЕНО В БРАУЗЕРЕ (LOCALSTORAGE). ДЛЯ ВСЕХ: СКАЧАЙТЕ TRACKS.JSON И СДЕЛАЙТЕ GIT PUSH", "info");
+                        } else {
+                            notify(`ОШИБКА СЕРВЕРА (${res.status}): ${errData.error || 'ПРОВЕРЬТЕ СЕРВЕР'}`, "warn");
+                        }
                     }
                 } catch (e) {
-                    notify("ОШИБКА СЕТИ: БЭКЕНД /API/DATA НЕДОСТУПЕН", "warn");
+                    if (window.location.hostname.includes('github.io') || !window.location.port) {
+                        notify("СОХРАНЕНО В БРАУЗЕРЕ (ДЛЯ ПУБЛИКАЦИИ ВСЕМ: СКАЧАЙТЕ TRACKS.JSON И СДЕЛАЙТЕ GIT PUSH)", "info");
+                    } else {
+                        notify("СОХРАНЕНО В БРАУЗЕРЕ (ЛОКАЛЬНЫЙ БЭКЕНД НЕ ЗАПУЩЕН)", "info");
+                    }
                 }
-            }, [photos, wikiArticles, discordStatus, discordText, discordId, isAdmin, adminPass, lastFmApiKey, lastFmUser, notify]);
+            }, [photos, wikiArticles, discordStatus, discordText, discordId, isAdmin, adminPass, lastFmApiKey, lastFmUser, notify, tracks]);
 
 
             useEffect(() => {

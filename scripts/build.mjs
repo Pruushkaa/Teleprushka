@@ -18,11 +18,15 @@ const tracks = JSON.parse(fs.readFileSync(tracksFile, 'utf8'));
 console.log(`[VALIDATION] tracks.json OK (${tracks.length} tracks registered)`);
 
 for (const t of tracks) {
-    const fullPath = path.join(rootDir, t.file);
-    if (!fs.existsSync(fullPath)) {
-        console.warn(`[WARN] Track file not found at ${t.file}`);
+    if (t.file) {
+        const fullPath = path.join(rootDir, t.file);
+        if (!fs.existsSync(fullPath)) {
+            console.warn(`[WARN] Track file not found at ${t.file}`);
+        } else {
+            console.log(`  ✔ Validated route: ${t.title} (${t.file})`);
+        }
     } else {
-        console.log(`  ✔ Validated route: ${t.title} (${t.file})`);
+        console.log(`  ✔ Validated inline/custom route: ${t.title}`);
     }
 }
 
