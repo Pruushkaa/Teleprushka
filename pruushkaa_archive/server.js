@@ -14,6 +14,10 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get(['/music', '/music.html'], (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'music.html'));
+});
+
 function readDB() {
     let parsed = {};
     try {

@@ -877,6 +877,16 @@
                             </button>
                         </div>
 
+                        <a
+                            href="music.html"
+                            className="brutal-btn bg-[#FF5722] text-white px-3 py-1.5 font-mono text-xs font-black uppercase flex items-center gap-1.5 hover:bg-black transition-colors"
+                            title="Глубокая аналитика 40,000+ скробблов, чарты, heatmap"
+                        >
+                            <i className="fa-solid fa-chart-pie"></i>
+                            <span>АНАЛИТИКА 40,000+ СКРОББЛОВ</span>
+                            <i className="fa-solid fa-arrow-right text-[10px]"></i>
+                        </a>
+
                         <button
                             onClick={() => {
                                 sfx.playClick();
@@ -4687,6 +4697,13 @@
                     run: () => setAdminModalOpen(true)
                 },
                 {
+                    label: "Открыть страницу музыкальной аналитики (40,000+ скробблов)",
+                    cmd: "view --music",
+                    run: () => {
+                        window.location.href = 'music.html';
+                    }
+                },
+                {
                     label: "Открыть раздел: ФОТОАРХИВ",
                     cmd: "view --photos",
                     run: () => {
@@ -4920,6 +4937,18 @@
                                     <span>{tab.label}</span>
                                 </button>
                             ))}
+
+                            <a
+                                href="music.html"
+                                onMouseEnter={() => sfx.playHover()}
+                                onClick={() => sfx.playClick()}
+                                className="brutal-btn px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5 bg-[#00E5FF] text-black shadow-[2px_2px_0px_#000] hover:bg-[#CCFF00]"
+                                title="Полноценная аналитика прослушиваний Last.fm (40,000+ скробблов)"
+                            >
+                                <i className="fa-solid fa-chart-simple text-[#FF5722]"></i>
+                                <span>МУЗЫКА // АНАЛИТИКА (40K)</span>
+                                <span className="text-[10px] bg-black text-[#CCFF00] px-1 py-0.2">NEW</span>
+                            </a>
                         </div>
 
                         <button

@@ -1,0 +1,2537 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PRUUSHKAA // МУЗЫКАЛЬНАЯ АНАЛИТИКА (40,000+ СКРОББЛОВ)</title>
+    <meta name="description" content="Глубокая аналитика 40,000+ скробблов Last.fm: интерактивные чарты, тепловая карта прослушиваний, гиперфиксации, 24-часовой радар и плеер сэмплов." />
+    <meta property="og:title" content="PRUUSHKAA // МУЗЫКАЛЬНАЯ АНАЛИТИКА" />
+    <meta property="og:description" content="Интерактивный дашборд Last.fm: 40,000+ скробблов, чарты артистов, репит-стрики, heatmap и аудиоплеер." />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23FF5722'/><text y='72' x='20' font-size='65' font-weight='900' font-family='sans-serif' fill='white'>P</text></svg>" />
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts: Space Grotesk & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,700;0,800;1,400&family=Space+Grotesk:wght@500;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+    <!-- Static Application Config -->
+    <script src="config.js"></script>
+
+    <!-- Precomputed Music Summary & Analytics Engine -->
+    <script src="public/data/music-summary.js"></script>
+    <script src="public/data/music-analytics.js"></script>
+
+    <!-- React 18 & Babel Standalone -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Space Grotesk"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        archive: {
+                            bg: '#F4F0EA',
+                            orange: '#FF5722',
+                            lime: '#CCFF00',
+                            cyan: '#00E5FF',
+                            violet: '#B388FF',
+                            dark: '#121212'
+                        }
+                    }
+                }
+            }
+        };
+    </script>
+
+    <style>
+        :root {
+            --bg-main: #F4F0EA;
+            --text-main: #111111;
+            --card-bg: #FFFFFF;
+            --accent-orange: #FF5722;
+            --accent-lime: #CCFF00;
+        }
+
+        body.theme-cyber {
+            --bg-main: #0D0E12;
+            --text-main: #F4F0EA;
+            --card-bg: #181A20;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: 'Space Grotesk', sans-serif;
+            overflow-x: hidden;
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+
+        .brutal-card {
+            background-color: var(--card-bg);
+            border: 3px solid #000000;
+            box-shadow: 6px 6px 0px 0px #000000;
+            transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.12s cubic-bezier(0.2, 0, 0, 1);
+        }
+
+        .brutal-card-interactive:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 8px 8px 0px 0px #000000;
+        }
+
+        .brutal-card-interactive:active {
+            transform: translate(6px, 6px);
+            box-shadow: 0px 0px 0px 0px #000000;
+        }
+
+        .brutal-btn {
+            border: 3px solid #000000;
+            box-shadow: 4px 4px 0px 0px #000000;
+            transition: all 0.1s ease;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .brutal-btn:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 6px 6px 0px 0px #000000;
+        }
+
+        .brutal-btn:active {
+            transform: translate(4px, 4px);
+            box-shadow: 0px 0px 0px 0px #000000;
+        }
+
+        @keyframes vinyl-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .spin-vinyl {
+            animation: vinyl-spin 4s linear infinite;
+        }
+
+        .spin-vinyl-paused {
+            animation: vinyl-spin 4s linear infinite;
+            animation-play-state: paused;
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #F4F0EA;
+            border-left: 3px solid #000;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #FF5722;
+            border: 2px solid #000;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+        const CONFIG = (typeof window !== 'undefined' && window.APP_CONFIG) ? window.APP_CONFIG : {
+            LASTFM_USER: 'Pruushkaa',
+            LASTFM_API_KEY: '684b6a85757601272919018585e32a99',
+            LASTFM_POLL_INTERVAL_MS: 15000,
+            DEFAULT_ADMIN_PASSWORD: 'admin'
+        };
+
+        // ==========================================
+        // 1. SOUND & AUDIO SYNTHESIZER ENGINE
+        // ==========================================
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                if (!this.ctx && typeof window !== 'undefined') {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playHover() {
+                if (!this.enabled) return;
+                try {
+                    this.init();
+                    if (!this.ctx) return;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(45, this.ctx.currentTime + 0.025);
+                    gain.gain.setValueAtTime(0.03, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.025);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.025);
+                } catch (e) {}
+            }
+
+            playClick() {
+                if (!this.enabled) return;
+                try {
+                    this.init();
+                    if (!this.ctx) return;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(260, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(70, this.ctx.currentTime + 0.04);
+                    gain.gain.setValueAtTime(0.06, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.04);
+                } catch (e) {}
+            }
+
+            playSuccess() {
+                if (!this.enabled) return;
+                try {
+                    this.init();
+                    if (!this.ctx) return;
+                    const now = this.ctx.currentTime;
+                    [523.25, 659.25, 783.99].forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.055);
+                        gain.gain.setValueAtTime(0.06, now + idx * 0.055);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.055 + 0.12);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now + idx * 0.055);
+                        osc.stop(now + idx * 0.055 + 0.12);
+                    });
+                } catch (e) {}
+            }
+
+            playMelodicSample(patternIdx = 0, onTick = null) {
+                this.init();
+                if (!this.ctx) return null;
+                const now = this.ctx.currentTime;
+                // Melodic chord progression in A minor / Pentatonic (Chainsaw Man / Cyberpunk vibe)
+                const chords = [
+                    [440, 523.25, 659.25, 783.99, 880],
+                    [349.23, 440, 523.25, 659.25, 698.46],
+                    [392, 493.88, 587.33, 698.46, 783.99],
+                    [329.63, 392, 493.88, 587.33, 659.25]
+                ];
+                const activeScale = chords[patternIdx % chords.length];
+                const notes = [];
+                for (let i = 0; i < 32; i++) {
+                    const freq = activeScale[i % activeScale.length];
+                    const noteTime = now + (i * 0.22);
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+                    osc.frequency.setValueAtTime(freq, noteTime);
+                    gain.gain.setValueAtTime(0.05, noteTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(noteTime);
+                    osc.stop(noteTime + 0.2);
+                    notes.push(osc);
+                }
+                return {
+                    stop: () => {
+                        try {
+                            notes.forEach(osc => {
+                                try { osc.stop(); } catch (err) {}
+                            });
+                        } catch (e) {}
+                    }
+                };
+            }
+        }
+
+        const sfx = new SoundEngine();
+
+        function triggerGlitchSpike(intensity = 1) {
+            window.dispatchEvent(new CustomEvent('glitch-spike', { detail: { intensity } }));
+        }
+
+        // ==========================================
+        // 2. GLITCH CANVAS BACKGROUND COMPONENT
+        // ==========================================
+        const GlitchCanvas = ({ darkMode }) => {
+            const canvasRef = useRef(null);
+            const spikeRef = useRef(0);
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                let animId;
+
+                const handleResize = () => {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                };
+                handleResize();
+                window.addEventListener('resize', handleResize);
+
+                const handleSpike = (e) => {
+                    spikeRef.current = (e.detail?.intensity || 1) * 14;
+                };
+                window.addEventListener('glitch-spike', handleSpike);
+
+                const render = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    // Grid
+                    ctx.save();
+                    const gridSize = 48;
+                    ctx.strokeStyle = darkMode ? 'rgba(255, 87, 34, 0.04)' : 'rgba(0, 0, 0, 0.03)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    for (let x = 0; x < canvas.width; x += gridSize) {
+                        ctx.moveTo(x, 0);
+                        ctx.lineTo(x, canvas.height);
+                    }
+                    for (let y = 0; y < canvas.height; y += gridSize) {
+                        ctx.moveTo(0, y);
+                        ctx.lineTo(canvas.width, y);
+                    }
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // Glitch lines
+                    const isSpiking = spikeRef.current > 0;
+                    const chance = isSpiking ? 0.85 : 0.03;
+                    if (Math.random() < chance) {
+                        ctx.save();
+                        const count = isSpiking ? Math.ceil(spikeRef.current / 3) : 1;
+                        for (let k = 0; k < count; k++) {
+                            const gx = Math.random() * canvas.width;
+                            const gy = Math.random() * canvas.height;
+                            const gw = 40 + Math.random() * 220;
+                            const gh = 2 + Math.random() * 12;
+                            ctx.fillStyle = Math.random() > 0.4
+                                ? (darkMode ? 'rgba(204, 255, 0, 0.25)' : 'rgba(255, 87, 34, 0.22)')
+                                : (darkMode ? 'rgba(0, 229, 255, 0.25)' : 'rgba(0, 0, 0, 0.15)');
+                            ctx.fillRect(gx, gy, gw, gh);
+                        }
+                        ctx.restore();
+                    }
+
+                    if (spikeRef.current > 0) {
+                        spikeRef.current -= 0.6;
+                        if (spikeRef.current < 0) spikeRef.current = 0;
+                    }
+
+                    animId = requestAnimationFrame(render);
+                };
+
+                render();
+
+                return () => {
+                    cancelAnimationFrame(animId);
+                    window.removeEventListener('resize', handleResize);
+                    window.removeEventListener('glitch-spike', handleSpike);
+                };
+            }, [darkMode]);
+
+            return (
+                <canvas
+                    ref={canvasRef}
+                    className="fixed inset-0 pointer-events-none z-0"
+                    style={{ opacity: 0.85 }}
+                />
+            );
+        };
+
+        // ==========================================
+        // 3. ANIMATED CANVAS EQUALIZER
+        // ==========================================
+        const AnimatedEqualizer = ({ isPlaying, accentColor = '#FF5722', barCount = 36 }) => {
+            const canvasRef = useRef(null);
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                let animId;
+                let step = 0;
+
+                const bars = new Array(barCount).fill(0).map(() => ({
+                    current: 0.1 + Math.random() * 0.2,
+                    target: 0.2,
+                    cap: 0.2,
+                    speed: 0.08 + Math.random() * 0.08
+                }));
+
+                const render = () => {
+                    step += 0.05;
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    const w = canvas.width;
+                    const h = canvas.height;
+                    const barWidth = (w - (barCount - 1) * 3) / barCount;
+
+                    for (let i = 0; i < barCount; i++) {
+                        const b = bars[i];
+                        if (isPlaying) {
+                            // Pulsing rhythm with wave variations
+                            const wave = Math.sin(step * 3 + i * 0.4) * 0.35 + 0.55;
+                            const noise = (Math.sin(step * 7 + i * 1.7) + 1) * 0.2;
+                            b.target = Math.min(1, Math.max(0.12, wave + noise));
+                        } else {
+                            // Gentle breathing idle wave
+                            b.target = 0.12 + Math.sin(step + i * 0.3) * 0.08;
+                        }
+
+                        b.current += (b.target - b.current) * b.speed;
+                        if (b.current > b.cap) {
+                            b.cap = b.current;
+                        } else {
+                            b.cap = Math.max(b.current, b.cap - 0.015);
+                        }
+
+                        const barHeight = b.current * (h - 6);
+                        const x = i * (barWidth + 3);
+                        const y = h - barHeight;
+
+                        // Bar background
+                        ctx.fillStyle = accentColor;
+                        ctx.fillRect(x, y, barWidth, barHeight);
+
+                        // Bar border (brutalist look)
+                        ctx.strokeStyle = '#000000';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(x, y, barWidth, barHeight);
+
+                        // Floating peak cap dot
+                        const capY = h - (b.cap * (h - 6)) - 4;
+                        ctx.fillStyle = '#000000';
+                        ctx.fillRect(x, Math.max(0, capY), barWidth, 2);
+                    }
+
+                    animId = requestAnimationFrame(render);
+                };
+
+                render();
+                return () => cancelAnimationFrame(animId);
+            }, [isPlaying, accentColor, barCount]);
+
+            return (
+                <canvas
+                    ref={canvasRef}
+                    width={480}
+                    height={54}
+                    className="w-full h-12 brutal-card border-2 border-black bg-black/5"
+                />
+            );
+        };
+
+        // ==========================================
+        // 4. SPINNING VINYL RECORD DISC
+        // ==========================================
+        const VinylDisc = ({ isPlaying, imageUrl, size = 110 }) => {
+            return (
+                <div
+                    className="relative shrink-0 flex items-center justify-center select-none"
+                    style={{ width: size, height: size }}
+                >
+                    {/* Vinyl Outer Ring */}
+                    <div
+                        className={`w-full h-full rounded-full bg-[#111111] border-4 border-black shadow-[4px_4px_0px_#000] flex items-center justify-center relative overflow-hidden ${
+                            isPlaying ? 'spin-vinyl' : 'spin-vinyl-paused'
+                        }`}
+                        style={{
+                            background: 'radial-gradient(circle, #2a2a2a 0%, #111111 60%, #050505 100%)'
+                        }}
+                    >
+                        {/* Grooves */}
+                        <div className="absolute inset-2 rounded-full border border-neutral-700/60 pointer-events-none"></div>
+                        <div className="absolute inset-4 rounded-full border border-neutral-600/40 pointer-events-none"></div>
+                        <div className="absolute inset-7 rounded-full border border-neutral-700/60 pointer-events-none"></div>
+
+                        {/* Center Label / Album Artwork */}
+                        <div className="w-1/2 h-1/2 rounded-full border-2 border-black overflow-hidden relative shadow-inner bg-[#FF5722]">
+                            {imageUrl ? (
+                                <img
+                                    src={imageUrl}
+                                    alt="Cover"
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                        e.target.style.display = 'none';
+                                    }}
+                                />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center font-mono font-black text-white text-[10px]">
+                                    P//A
+                                </div>
+                            )}
+                            {/* Spindle hole */}
+                            <div className="absolute inset-0 m-auto w-3.5 h-3.5 bg-black border-2 border-white rounded-full"></div>
+                        </div>
+                    </div>
+
+                    {/* Playing indicator tone-arm badge */}
+                    {isPlaying && (
+                        <div className="absolute -top-1 -right-1 bg-[#CCFF00] border-2 border-black px-1.5 py-0.5 text-[9px] font-mono font-black text-black shadow-[2px_2px_0px_#000] animate-pulse">
+                            ON AIR
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 5. 24-HOUR HOURLY RADAR CHART
+        // ==========================================
+        const HourlyRadarChart = ({ hourlyData, darkMode }) => {
+            const [hoveredHour, setHoveredHour] = useState(null);
+
+            const hours = hourlyData || new Array(24).fill(0);
+            const maxVal = Math.max(...hours, 1);
+            const total = hours.reduce((a, b) => a + b, 0) || 1;
+
+            // Zones
+            const night = hours.slice(0, 6).reduce((a, b) => a + b, 0);
+            const morning = hours.slice(6, 12).reduce((a, b) => a + b, 0);
+            const day = hours.slice(12, 18).reduce((a, b) => a + b, 0);
+            const evening = hours.slice(18, 24).reduce((a, b) => a + b, 0);
+
+            const peakHour = hours.indexOf(maxVal);
+
+            const getHourColor = (h) => {
+                if (h >= 0 && h < 6) return '#B388FF'; // Night: violet
+                if (h >= 6 && h < 12) return '#CCFF00'; // Morning: lime
+                if (h >= 12 && h < 18) return '#00E5FF'; // Day: cyan
+                return '#FF5722'; // Evening: orange
+            };
+
+            return (
+                <div className="brutal-card p-4 sm:p-5 flex flex-col justify-between">
+                    <div>
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black pb-2.5 mb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 bg-[#00E5FF] border border-black inline-block"></span>
+                                <h3 className="font-extrabold text-sm sm:text-base uppercase tracking-tight">
+                                    24-ЧАСОВОЙ ГРАФИК ПРОСЛУШИВАНИЙ
+                                </h3>
+                            </div>
+                            <div className="font-mono text-xs font-bold bg-black text-[#CCFF00] px-2 py-0.5 border border-black">
+                                ★ ПИК: {String(peakHour).padStart(2, '0')}:00 ({maxVal.toLocaleString()} ТР.)
+                            </div>
+                        </div>
+
+                        <p className="font-mono text-xs text-neutral-600 mb-4">
+                            Распределение 40,000+ скробблов по часам суток. Наведи курсор на столбец для просмотра детализации.
+                        </p>
+                    </div>
+
+                    {/* SVG Bar Chart */}
+                    <div className="relative pt-6 pb-2">
+                        {/* Tooltip */}
+                        {hoveredHour !== null && (
+                            <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-black text-white px-3 py-1 border border-[#CCFF00] font-mono text-xs font-bold shadow-[3px_3px_0px_#000] z-10 whitespace-nowrap">
+                                <span>{String(hoveredHour).padStart(2, '0')}:00 - {String(hoveredHour).padStart(2, '0')}:59 : </span>
+                                <span className="text-[#CCFF00] font-black">{hours[hoveredHour].toLocaleString()} треков</span>
+                                <span className="text-neutral-400 ml-1.5">({((hours[hoveredHour] / total) * 100).toFixed(1)}%)</span>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-24 gap-1 sm:gap-1.5 items-end h-40 border-b-2 border-black px-1">
+                            {hours.map((val, h) => {
+                                const heightPct = Math.max(6, Math.round((val / maxVal) * 100));
+                                const color = getHourColor(h);
+                                const isPeak = h === peakHour;
+
+                                return (
+                                    <div
+                                        key={h}
+                                        className="h-full flex flex-col justify-end items-center group cursor-pointer"
+                                        onMouseEnter={() => {
+                                            sfx.playHover();
+                                            setHoveredHour(h);
+                                        }}
+                                        onMouseLeave={() => setHoveredHour(null)}
+                                    >
+                                        <div
+                                            className={`w-full transition-all duration-150 border-2 border-black relative ${
+                                                isPeak ? 'shadow-[2px_2px_0px_#000]' : ''
+                                            }`}
+                                            style={{
+                                                height: `${heightPct}%`,
+                                                backgroundColor: color,
+                                                transform: hoveredHour === h ? 'scaleY(1.05)' : 'none'
+                                            }}
+                                        >
+                                            {isPeak && (
+                                                <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-black">
+                                                    ★
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* X-axis labels */}
+                        <div className="grid grid-cols-24 gap-1 sm:gap-1.5 pt-1.5 font-mono text-[9px] sm:text-[10px] text-center text-neutral-600 font-bold">
+                            {hours.map((_, h) => (
+                                <div key={h} className={h % 3 === 0 ? 'text-black font-extrabold' : 'opacity-40'}>
+                                    {h % 3 === 0 ? h : ''}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Dayparts Breakdown */}
+                    <div className="mt-4 pt-3 border-t-2 border-black grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">
+                        <div className="p-2 border border-black bg-white flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 bg-[#B388FF] border border-black inline-block"></span>
+                                <span>НОЧЬ (00-06)</span>
+                            </span>
+                            <span className="font-extrabold">{((night / total) * 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="p-2 border border-black bg-white flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 bg-[#CCFF00] border border-black inline-block"></span>
+                                <span>УТРО (06-12)</span>
+                            </span>
+                            <span className="font-extrabold">{((morning / total) * 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="p-2 border border-black bg-white flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 bg-[#00E5FF] border border-black inline-block"></span>
+                                <span>ДЕНЬ (12-18)</span>
+                            </span>
+                            <span className="font-extrabold">{((day / total) * 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="p-2 border border-black bg-white flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 bg-[#FF5722] border border-black inline-block"></span>
+                                <span>ВЕЧЕР (18-24)</span>
+                            </span>
+                            <span className="font-extrabold">{((evening / total) * 100).toFixed(1)}%</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 6. GITHUB-STYLE CALENDAR HEATMAP (52 WEEKS)
+        // ==========================================
+        const ActivityHeatmap = ({ dailyData, onSelectDay, selectedDay, darkMode }) => {
+            const [hoveredCell, setHoveredCell] = useState(null);
+
+            const daily = dailyData || {};
+            const dates = Object.keys(daily).sort();
+            const counts = Object.values(daily);
+            const maxVal = Math.max(...counts, 1);
+
+            // Build 52 weeks grid (364 days ending around Oct 31, 2026)
+            const endDate = new Date('2026-10-31T00:00:00Z');
+            const totalDays = 52 * 7;
+            const startDate = new Date(endDate.getTime() - (totalDays - 1) * 24 * 60 * 60 * 1000);
+
+            // Align start date to Sunday or Monday
+            const gridDays = [];
+            for (let i = 0; i < totalDays; i++) {
+                const cur = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+                const yyyy = cur.getFullYear();
+                const mm = String(cur.getMonth() + 1).padStart(2, '0');
+                const dd = String(cur.getDate()).padStart(2, '0');
+                const key = `${yyyy}-${mm}-${dd}`;
+                const count = daily[key] || 0;
+                gridDays.push({
+                    date: cur,
+                    key,
+                    count,
+                    dayOfWeek: cur.getDay() // 0 = Sun, 1 = Mon ...
+                });
+            }
+
+            // Columns = 52 weeks, Rows = 7 days
+            const weeks = [];
+            for (let w = 0; w < 52; w++) {
+                weeks.push(gridDays.slice(w * 7, (w + 1) * 7));
+            }
+
+            const getLevelColor = (count) => {
+                if (count === 0) return darkMode ? '#20242D' : '#E6E2D8';
+                if (count < 25) return darkMode ? '#5a2512' : '#FFE0B2';
+                if (count < 60) return darkMode ? '#9e320f' : '#FFB74D';
+                if (count < 120) return darkMode ? '#e64a19' : '#FF7043';
+                return '#FF5722'; // High activity
+            };
+
+            const months = [
+                { label: 'Ноя', col: 0 },
+                { label: 'Дек', col: 4 },
+                { label: 'Янв', col: 9 },
+                { label: 'Фев', col: 13 },
+                { label: 'Мар', col: 17 },
+                { label: 'Апр', col: 22 },
+                { label: 'Май', col: 26 },
+                { label: 'Июн', col: 30 },
+                { label: 'Июл', col: 35 },
+                { label: 'Авг', col: 39 },
+                { label: 'Сен', col: 43 },
+                { label: 'Окт', col: 48 }
+            ];
+
+            return (
+                <div className="brutal-card p-4 sm:p-5 flex flex-col justify-between">
+                    <div>
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black pb-2.5 mb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 bg-[#FF5722] border border-black inline-block"></span>
+                                <h3 className="font-extrabold text-sm sm:text-base uppercase tracking-tight">
+                                    КАЛЕНДАРЬ АКТИВНОСТИ // 365 ДНЕЙ
+                                </h3>
+                            </div>
+                            <div className="font-mono text-xs font-bold bg-[#CCFF00] text-black px-2 py-0.5 border border-black">
+                                351 АКТИВНЫЙ ДЕНЬ ИЗ 365 (96.2%)
+                            </div>
+                        </div>
+
+                        <p className="font-mono text-xs text-neutral-600 mb-3">
+                            Плотность скробблинга по дням (GitHub-style Heatmap). Кликни на любую ячейку, чтобы отфильтровать треки этого дня в архиве!
+                        </p>
+                    </div>
+
+                    {/* Heatmap Grid with horizontal scroll on small screens */}
+                    <div className="overflow-x-auto pb-2 relative">
+                        {hoveredCell && (
+                            <div className="fixed sm:absolute top-2 right-4 bg-black text-white px-2.5 py-1 border border-[#CCFF00] font-mono text-xs shadow-[3px_3px_0px_#000] z-20 pointer-events-none">
+                                <span className="text-[#CCFF00] font-black">{hoveredCell.key}: </span>
+                                <span>{hoveredCell.count.toLocaleString()} треков</span>
+                                {hoveredCell.count >= 200 && <span className="ml-1 text-[#FF5722] font-black">★ РЕКОРД</span>}
+                            </div>
+                        )}
+
+                        <div className="min-w-[680px]">
+                            {/* Month Headers */}
+                            <div className="flex text-[10px] font-mono font-bold text-neutral-500 mb-1 ml-6 relative h-4">
+                                {months.map((m, idx) => (
+                                    <div
+                                        key={idx}
+                                        className="absolute text-neutral-700"
+                                        style={{ left: `${m.col * 13}px` }}
+                                    >
+                                        {m.label}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex gap-1">
+                                {/* Weekday Labels */}
+                                <div className="flex flex-col justify-between text-[9px] font-mono font-bold text-neutral-500 pr-1 py-0.5 h-[98px]">
+                                    <span>Пн</span>
+                                    <span>Ср</span>
+                                    <span>Пт</span>
+                                </div>
+
+                                {/* 52 Weeks Columns */}
+                                <div className="flex gap-[3px]">
+                                    {weeks.map((week, wIdx) => (
+                                        <div key={wIdx} className="flex flex-col gap-[3px]">
+                                            {week.map((day) => {
+                                                const bg = getLevelColor(day.count);
+                                                const isSelected = selectedDay === day.key;
+                                                const isRecord = day.count >= 220;
+
+                                                return (
+                                                    <div
+                                                        key={day.key}
+                                                        onClick={() => {
+                                                            sfx.playClick();
+                                                            onSelectDay(isSelected ? null : day.key);
+                                                        }}
+                                                        onMouseEnter={() => {
+                                                            sfx.playHover();
+                                                            setHoveredCell(day);
+                                                        }}
+                                                        onMouseLeave={() => setHoveredCell(null)}
+                                                        className={`w-[11px] h-[11px] border border-black cursor-pointer transition-transform hover:scale-125 hover:z-10 ${
+                                                            isSelected ? 'ring-2 ring-black scale-125 z-10' : ''
+                                                        } ${isRecord ? 'animate-pulse' : ''}`}
+                                                        style={{
+                                                            backgroundColor: isSelected ? '#CCFF00' : bg
+                                                        }}
+                                                        title={`${day.key}: ${day.count} треков`}
+                                                    />
+                                                );
+                                            })}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="mt-3 pt-3 border-t-2 border-black flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+                        <div className="flex items-center gap-2">
+                            {selectedDay ? (
+                                <div className="flex items-center gap-2 bg-[#CCFF00] px-2 py-0.5 border border-black font-extrabold text-black">
+                                    <span>ФИЛЬТР ДНЯ: {selectedDay}</span>
+                                    <button
+                                        onClick={() => onSelectDay(null)}
+                                        className="hover:text-red-600 font-black ml-1"
+                                        title="Сбросить фильтр"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            ) : (
+                                <span className="text-neutral-500 font-bold">Кликни дату для фильтрации архива</span>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 text-neutral-600 text-[11px]">
+                            <span>Меньше</span>
+                            <span className="w-3 h-3 border border-black inline-block" style={{ backgroundColor: getLevelColor(0) }}></span>
+                            <span className="w-3 h-3 border border-black inline-block" style={{ backgroundColor: getLevelColor(15) }}></span>
+                            <span className="w-3 h-3 border border-black inline-block" style={{ backgroundColor: getLevelColor(40) }}></span>
+                            <span className="w-3 h-3 border border-black inline-block" style={{ backgroundColor: getLevelColor(80) }}></span>
+                            <span className="w-3 h-3 border border-black inline-block" style={{ backgroundColor: getLevelColor(150) }}></span>
+                            <span>Больше</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 7. "ON REPEAT / ГИПЕРФИКСАЦИИ" COMPONENT
+        // ==========================================
+        const HyperfixationsBlock = ({ onPlayTrack, onSearchArchive }) => {
+            const featuredItems = [
+                {
+                    id: 'mirele',
+                    title: 'Метеорит',
+                    artist: 'Mirèle',
+                    album: 'Косички',
+                    recordLabel: '★ 233 РЕПИТА ПОДРЯД (7 ИЮЛЯ 2026)',
+                    badge: '228 ЗА СУТКИ // 278 ВСЕГО',
+                    tag: 'АБСОЛЮТНЫЙ РЕКОРД',
+                    accent: '#FF5722',
+                    desc: 'Эмоциональный инди-поп марафон: непрерывное зацикливание на протяжении 14 часов подряд.'
+                },
+                {
+                    id: 'reze',
+                    title: 'in the pool',
+                    artist: 'Kensuke Ushio',
+                    album: "CHAINSAW MAN: REZE ARC OST -summer's end-",
+                    recordLabel: '482 СКРОББЛА АЛЬБОМА',
+                    badge: 'СТРИК: 68 ПОДРЯД',
+                    tag: 'САУНДТРЕК REZE ARC',
+                    accent: '#CCFF00',
+                    desc: 'Атмосферный кинематографичный эмбиент от Кэнсукэ Усио к фильму Chainsaw Man - Reze Arc.'
+                },
+                {
+                    id: 'va11',
+                    title: 'Your Love Is a Drug / A Neon Glow',
+                    artist: 'Garoad',
+                    album: 'VA-11 Hall-A (Original Soundtrack: Second Round)',
+                    recordLabel: '302 СКРОББЛА АЛЬБОМА',
+                    badge: '90 ЗА ДЕНЬ // 351 ВСЕГО',
+                    tag: 'CYBERPUNK BARTENDER',
+                    accent: '#00E5FF',
+                    desc: 'Ностальгический синти-вейв и барменский лоу-фай из Glitch City. Идеальный саундтрек ночного кодинга.'
+                },
+                {
+                    id: 'azali',
+                    title: 'why do all my happy songs sound so sad...',
+                    artist: 'AZALI',
+                    album: 'why do all my happy songs sound so sad...',
+                    recordLabel: '188 СКРОББЛОВ ЗА ДЕНЬ (29 ИЮНЯ)',
+                    badge: 'СТРИК: 130 ПОДРЯД // 197 ВСЕГО',
+                    tag: 'HYPER-FIXATION',
+                    accent: '#B388FF',
+                    desc: 'Интенсивный меланхоличный репит с максимальной плотностью прослушиваний в начале лета.'
+                }
+            ];
+
+            return (
+                <div className="brutal-card p-4 sm:p-6 mb-6 bg-white text-black">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b-3 border-black pb-3 mb-5">
+                        <div className="flex items-center gap-2.5">
+                            <span className="w-8 h-8 bg-black text-[#CCFF00] flex items-center justify-center font-mono font-black text-sm border-2 border-black shadow-[2px_2px_0px_#000]">
+                                <i className="fa-solid fa-arrows-rotate"></i>
+                            </span>
+                            <div>
+                                <h2 className="font-extrabold text-base sm:text-xl uppercase tracking-tight leading-none">
+                                    РЕЖИМ ГИПЕРФИКСАЦИИ // ON REPEAT & LOOPS
+                                </h2>
+                                <span className="font-mono text-xs text-neutral-600 font-bold">
+                                    ХРОНИКА САМЫХ ЗАЦИКЛЕННЫХ ТРЕКОВ И АЛЬБОМОВ БИБЛИОТЕКИ
+                                </span>
+                            </div>
+                        </div>
+
+                        <span className="font-mono text-xs font-black uppercase bg-[#FF5722] text-white px-2.5 py-1 border-2 border-black shadow-[3px_3px_0px_#000]">
+                            АНАЛИЗ АНОМАЛЬНОЙ ПЛОТНОСТИ
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {featuredItems.map((item) => (
+                            <div
+                                key={item.id}
+                                className="brutal-card brutal-card-interactive p-4 flex flex-col justify-between relative overflow-hidden bg-[#FBF9F5]"
+                            >
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-black/5 rounded-bl-full pointer-events-none"></div>
+
+                                <div>
+                                    <div className="flex items-center justify-between gap-2 mb-2 font-mono text-[10px] font-black uppercase">
+                                        <span
+                                            className="px-2 py-0.5 border border-black shadow-[2px_2px_0px_#000]"
+                                            style={{ backgroundColor: item.accent, color: item.accent === '#CCFF00' ? '#000' : '#fff' }}
+                                        >
+                                            {item.tag}
+                                        </span>
+                                        <span className="text-neutral-500 font-bold">LOOP_DETECTED</span>
+                                    </div>
+
+                                    <h4 className="font-extrabold text-base leading-tight mb-1 truncate" title={item.title}>
+                                        {item.title}
+                                    </h4>
+                                    <div className="font-bold text-xs text-[#FF5722] mb-1">
+                                        {item.artist}
+                                    </div>
+                                    <div className="font-mono text-[11px] text-neutral-600 mb-3 truncate" title={item.album}>
+                                        {item.album}
+                                    </div>
+
+                                    <div className="space-y-1.5 mb-3 font-mono text-xs">
+                                        <div className="bg-black text-[#CCFF00] px-2 py-0.5 border border-black font-extrabold text-[11px]">
+                                            {item.recordLabel}
+                                        </div>
+                                        <div className="bg-white text-black px-2 py-0.5 border border-black font-bold text-[11px]">
+                                            {item.badge}
+                                        </div>
+                                    </div>
+
+                                    <p className="font-sans text-xs text-neutral-700 leading-snug mb-4">
+                                        {item.desc}
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center gap-2 pt-2 border-t border-black font-mono text-xs">
+                                    <button
+                                        onClick={() => {
+                                            sfx.playClick();
+                                            onPlayTrack({
+                                                track: item.title.split('/')[0].trim(),
+                                                artist: item.artist,
+                                                album: item.album
+                                            });
+                                        }}
+                                        className="brutal-btn bg-[#CCFF00] text-black px-3 py-1 font-black flex-1 flex items-center justify-center gap-1.5 hover:bg-black hover:text-[#CCFF00]"
+                                    >
+                                        <i className="fa-solid fa-play text-[10px]"></i>
+                                        <span>СЛУШАТЬ</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            sfx.playClick();
+                                            onSearchArchive(item.artist);
+                                        }}
+                                        className="brutal-btn bg-white text-black px-2.5 py-1 font-bold hover:bg-neutral-200"
+                                        title="Найти все треки в архиве"
+                                    >
+                                        <i className="fa-solid fa-magnifying-glass"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 8. BENTO CHARTS (TOP ARTISTS, ALBUMS, TRACKS)
+        // ==========================================
+        const BentoChartsSection = ({ stats, periodFilter, setPeriodFilter, onPlayTrack, onSearchArchive }) => {
+            const topArtists = stats?.topArtists?.slice(0, 10) || [];
+            const topAlbums = stats?.topAlbums?.slice(0, 10) || [];
+            const topTracks = stats?.topTracks?.slice(0, 10) || [];
+
+            const maxArtistPlays = topArtists[0]?.count || 1;
+            const maxAlbumPlays = topAlbums[0]?.count || 1;
+            const maxTrackPlays = topTracks[0]?.count || 1;
+
+            return (
+                <div className="mb-6">
+                    {/* Period Tabs Header */}
+                    <div className="brutal-card p-3 sm:p-4 mb-4 bg-white text-black flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <span className="w-3 h-3 bg-[#FF5722] border border-black inline-block"></span>
+                            <h2 className="font-extrabold text-base sm:text-lg uppercase tracking-tight">
+                                ЧАРТЫ И ТОПЫ МУЗЫКИ // RANKINGS
+                            </h2>
+                        </div>
+
+                        {/* Filter Buttons */}
+                        <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs">
+                            <span className="text-neutral-500 font-bold mr-1 hidden sm:inline">ПЕРИОД:</span>
+                            {[
+                                { id: 'ALL', label: 'ЗА ВСЁ ВРЕМЯ' },
+                                { id: '30D', label: 'ПОСЛЕДНИЕ 30 ДНЕЙ' },
+                                { id: '7D', label: 'НЕДЕЛЯ' },
+                                { id: '2026', label: '2026 ГОД' },
+                                { id: '2025', label: '2025 ГОД' }
+                            ].map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setPeriodFilter(tab.id);
+                                    }}
+                                    onMouseEnter={() => sfx.playHover()}
+                                    className={`brutal-btn px-2.5 sm:px-3 py-1 font-extrabold uppercase text-[11px] sm:text-xs ${
+                                        periodFilter === tab.id
+                                            ? 'bg-[#FF5722] text-white shadow-[2px_2px_0px_#000]'
+                                            : 'bg-[#F4F0EA] text-black hover:bg-white'
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 3 Bento Cards Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                        {/* Top 10 Artists */}
+                        <div className="brutal-card p-4 sm:p-5 flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 bg-[#FF5722] border border-black"></span>
+                                        <h3 className="font-extrabold text-sm sm:text-base uppercase tracking-tight">
+                                            ТОП-10 АРТИСТОВ
+                                        </h3>
+                                    </div>
+                                    <span className="font-mono text-xs text-neutral-500 font-bold">ПО СКРОББЛАМ</span>
+                                </div>
+
+                                <div className="space-y-2.5">
+                                    {topArtists.map((art, idx) => {
+                                        const barWidth = Math.round((art.count / maxArtistPlays) * 100);
+                                        return (
+                                            <div
+                                                key={idx}
+                                                onClick={() => {
+                                                    sfx.playClick();
+                                                    onSearchArchive(art.name);
+                                                }}
+                                                className="group p-2 border-2 border-black bg-white hover:bg-neutral-50 cursor-pointer transition-all hover:translate-x-1"
+                                            >
+                                                <div className="flex items-center justify-between gap-2 mb-1">
+                                                    <div className="flex items-center gap-2 truncate">
+                                                        <span className={`w-5 h-5 flex items-center justify-center font-mono text-[10px] font-black border border-black ${
+                                                            idx === 0 ? 'bg-[#FF5722] text-white' : idx < 3 ? 'bg-[#CCFF00] text-black' : 'bg-neutral-100 text-black'
+                                                        }`}>
+                                                            {idx + 1}
+                                                        </span>
+                                                        <span className="font-bold text-xs sm:text-sm truncate group-hover:text-[#FF5722]">
+                                                            {art.name}
+                                                        </span>
+                                                    </div>
+                                                    <div className="font-mono text-xs font-black shrink-0">
+                                                        <span>{art.count.toLocaleString()}</span>
+                                                        <span className="text-[10px] text-neutral-500 font-normal ml-1">({art.pct}%)</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Progress Bar */}
+                                                <div className="w-full h-2 bg-neutral-200 border border-black overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-[#FF5722] transition-all duration-500"
+                                                        style={{ width: `${barWidth}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Top 10 Albums */}
+                        <div className="brutal-card p-4 sm:p-5 flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 bg-[#00E5FF] border border-black"></span>
+                                        <h3 className="font-extrabold text-sm sm:text-base uppercase tracking-tight">
+                                            ТОП-10 АЛЬБОМОВ
+                                        </h3>
+                                    </div>
+                                    <span className="font-mono text-xs text-neutral-500 font-bold">ПО ПЛЕЯМ</span>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {topAlbums.map((alb, idx) => (
+                                        <div
+                                            key={idx}
+                                            onClick={() => {
+                                                sfx.playClick();
+                                                onSearchArchive(alb.album);
+                                            }}
+                                            className="p-2 border-2 border-black bg-white hover:bg-neutral-50 cursor-pointer transition-all hover:translate-x-1 flex items-center justify-between gap-2"
+                                        >
+                                            <div className="flex items-center gap-2 truncate">
+                                                <span className={`w-5 h-5 shrink-0 flex items-center justify-center font-mono text-[10px] font-black border border-black ${
+                                                    idx === 0 ? 'bg-[#00E5FF] text-black' : idx < 3 ? 'bg-neutral-200 text-black' : 'bg-neutral-100 text-neutral-600'
+                                                }`}>
+                                                    {idx + 1}
+                                                </span>
+                                                <div className="truncate">
+                                                    <div className="font-bold text-xs truncate leading-snug hover:text-[#00E5FF]">
+                                                        {alb.album}
+                                                    </div>
+                                                    <div className="font-mono text-[10px] text-neutral-500 truncate">
+                                                        {alb.artist}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <span className="font-mono text-xs font-black shrink-0 px-2 py-0.5 bg-neutral-100 border border-black">
+                                                {alb.count.toLocaleString()}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Top 10 Tracks */}
+                        <div className="brutal-card p-4 sm:p-5 flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 bg-[#CCFF00] border border-black"></span>
+                                        <h3 className="font-extrabold text-sm sm:text-base uppercase tracking-tight">
+                                            ТОП-10 ТРЕКОВ
+                                        </h3>
+                                    </div>
+                                    <span className="font-mono text-xs text-neutral-500 font-bold">СЭМПЛЕР</span>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {topTracks.map((trk, idx) => (
+                                        <div
+                                            key={idx}
+                                            className="p-2 border-2 border-black bg-white hover:bg-neutral-50 flex items-center justify-between gap-2 transition-all hover:translate-x-1"
+                                        >
+                                            <div className="flex items-center gap-2 truncate">
+                                                <button
+                                                    onClick={() => {
+                                                        sfx.playClick();
+                                                        onPlayTrack(trk);
+                                                    }}
+                                                    className="w-6 h-6 shrink-0 bg-[#CCFF00] hover:bg-black hover:text-[#CCFF00] border border-black flex items-center justify-center font-mono text-xs shadow-[1px_1px_0px_#000]"
+                                                    title="Воспроизвести сэмпл трека"
+                                                >
+                                                    <i className="fa-solid fa-play text-[9px]"></i>
+                                                </button>
+                                                <div className="truncate">
+                                                    <div className="font-bold text-xs truncate leading-snug">
+                                                        {trk.track}
+                                                    </div>
+                                                    <div className="font-mono text-[10px] text-neutral-500 truncate">
+                                                        {trk.artist}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5 shrink-0 font-mono text-xs">
+                                                {trk.streak > 1 && (
+                                                    <span className="text-[10px] font-bold px-1.5 py-0.2 bg-[#FF5722] text-white border border-black">
+                                                        x{trk.streak}
+                                                    </span>
+                                                )}
+                                                <span className="font-black px-1.5 py-0.5 bg-neutral-100 border border-black text-[11px]">
+                                                    {trk.count}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 9. INTERACTIVE SCROBBLE ARCHIVE (TABLE)
+        // ==========================================
+        const ScrobblesArchiveTable = ({
+            scrobbles,
+            searchQuery,
+            setSearchQuery,
+            selectedDay,
+            setSelectedDay,
+            onPlayTrack,
+            onExportCsv,
+            loadingFull
+        }) => {
+            const [currentPage, setCurrentPage] = useState(1);
+            const [sortOrder, setSortOrder] = useState('DESC'); // 'DESC' (newest first) or 'ASC' (oldest first)
+            const pageSize = 20;
+
+            // Reset page when search or date filter changes
+            useEffect(() => {
+                setCurrentPage(1);
+            }, [searchQuery, selectedDay, sortOrder]);
+
+            const filteredScrobbles = useMemo(() => {
+                if (!scrobbles || !scrobbles.length) return [];
+                let res = scrobbles;
+
+                // Date filter
+                if (selectedDay) {
+                    res = res.filter(s => {
+                        const d = new Date(s.date);
+                        const yyyy = d.getFullYear();
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        return `${yyyy}-${mm}-${dd}` === selectedDay;
+                    });
+                }
+
+                // Search query
+                if (searchQuery && searchQuery.trim()) {
+                    const q = searchQuery.toLowerCase().trim();
+                    res = res.filter(s => {
+                        const track = (s.track || '').toLowerCase();
+                        const artist = (s.artist || '').toLowerCase();
+                        const album = (s.album || '').toLowerCase();
+                        return track.includes(q) || artist.includes(q) || album.includes(q);
+                    });
+                }
+
+                // Sort
+                if (sortOrder === 'DESC') {
+                    // scrobbles are normally ASC, so reverse for newest first
+                    return [...res].reverse();
+                } else {
+                    return res;
+                }
+            }, [scrobbles, searchQuery, selectedDay, sortOrder]);
+
+            const totalCount = filteredScrobbles.length;
+            const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+            const paginatedItems = useMemo(() => {
+                const start = (currentPage - 1) * pageSize;
+                return filteredScrobbles.slice(start, start + pageSize);
+            }, [filteredScrobbles, currentPage, pageSize]);
+
+            const formatDate = (ts) => {
+                if (!ts) return '—';
+                const d = new Date(ts);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                const hours = String(d.getHours()).padStart(2, '0');
+                const minutes = String(d.getMinutes()).padStart(2, '0');
+                return `${day}.${month}.${year} ${hours}:${minutes}`;
+            };
+
+            return (
+                <div className="brutal-card p-4 sm:p-6 mb-8 bg-white text-black" id="archive-section">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b-3 border-black pb-3 mb-4">
+                        <div className="flex items-center gap-2.5">
+                            <span className="w-8 h-8 bg-[#CCFF00] text-black flex items-center justify-center font-mono font-black text-sm border-2 border-black shadow-[2px_2px_0px_#000]">
+                                <i className="fa-solid fa-list-ul"></i>
+                            </span>
+                            <div>
+                                <h2 className="font-extrabold text-base sm:text-xl uppercase tracking-tight leading-none">
+                                    АРХИВ ПРОСЛУШИВАНИЙ // SCROBBLE LOG
+                                </h2>
+                                <span className="font-mono text-xs text-neutral-600 font-bold">
+                                    ПОИСК И ПАГИНАЦИЯ ПО ВСЕЙ БАЗЕ (40,092 ТРЕКА)
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            {loadingFull && (
+                                <span className="font-mono text-[11px] font-black bg-amber-300 text-black px-2 py-1 border border-black animate-pulse">
+                                    ЗАГРУЗКА БАЗЫ 40К...
+                                </span>
+                            )}
+                            <button
+                                onClick={onExportCsv}
+                                className="brutal-btn bg-[#CCFF00] text-black px-3 py-1 font-mono text-xs font-black uppercase flex items-center gap-1.5"
+                                title="Скачать отфильтрованный список в CSV"
+                            >
+                                <i className="fa-solid fa-file-csv"></i>
+                                <span>ЭКСПОРТ CSV</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Filter & Search Bar */}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-4 font-mono text-xs">
+                        <div className="md:col-span-6 relative">
+                            <i className="fa-solid fa-magnifying-glass absolute left-3 top-3 text-neutral-500"></i>
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Поиск по названию трека, артисту или альбому..."
+                                className="w-full pl-9 pr-8 py-2 bg-neutral-100 border-2 border-black font-mono font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5722]"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-3 top-2.5 text-neutral-400 hover:text-black font-black"
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="md:col-span-3 flex items-center gap-2">
+                            <span className="font-bold text-neutral-500 shrink-0">ПОРЯДОК:</span>
+                            <button
+                                onClick={() => {
+                                    sfx.playClick();
+                                    setSortOrder(sortOrder === 'DESC' ? 'ASC' : 'DESC');
+                                }}
+                                className="brutal-btn bg-white px-3 py-1.5 font-black uppercase flex-1 flex items-center justify-center gap-1.5"
+                            >
+                                <i className={`fa-solid ${sortOrder === 'DESC' ? 'fa-arrow-down-wide-short' : 'fa-arrow-up-wide-short'}`}></i>
+                                <span>{sortOrder === 'DESC' ? 'СНАЧАЛА НОВЫЕ' : 'СНАЧАЛА СТАРЫЕ'}</span>
+                            </button>
+                        </div>
+
+                        <div className="md:col-span-3 flex items-center justify-between sm:justify-end gap-2">
+                            {selectedDay && (
+                                <div className="flex items-center gap-1.5 bg-[#FF5722] text-white px-2 py-1 font-mono font-black border border-black text-[11px]">
+                                    <span>ДЕНЬ: {selectedDay}</span>
+                                    <button
+                                        onClick={() => setSelectedDay(null)}
+                                        className="hover:text-black ml-1 font-extrabold"
+                                        title="Сбросить фильтр даты"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            )}
+                            <div className="font-mono text-xs font-black bg-neutral-100 px-2.5 py-1.5 border-2 border-black">
+                                НАЙДЕНО: <span className="text-[#FF5722]">{totalCount.toLocaleString()}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Table Container with Horizontal Scroll */}
+                    <div className="overflow-x-auto border-2 border-black mb-4 bg-white">
+                        <table className="w-full text-left font-mono text-xs border-collapse">
+                            <thead>
+                                <tr className="bg-black text-white font-black uppercase text-[11px] border-b-2 border-black">
+                                    <th className="p-2.5 text-center w-12">№</th>
+                                    <th className="p-2.5 w-36">ВРЕМЯ / ДАТА</th>
+                                    <th className="p-2.5">ТРЕК</th>
+                                    <th className="p-2.5">АРТИСТ</th>
+                                    <th className="p-2.5">АЛЬБОМ</th>
+                                    <th className="p-2.5 text-center w-20">ПЛЕЕР</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {paginatedItems.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="6" className="p-8 text-center text-neutral-500 font-bold font-mono">
+                                            {loadingFull ? 'Загрузка полного архива треков...' : 'Треки по вашему запросу не найдены.'}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    paginatedItems.map((item, idx) => {
+                                        const globalIdx = sortOrder === 'DESC'
+                                            ? totalCount - ((currentPage - 1) * pageSize + idx)
+                                            : ((currentPage - 1) * pageSize + idx + 1);
+
+                                        return (
+                                            <tr
+                                                key={idx}
+                                                className="border-b border-black hover:bg-[#CCFF00]/15 transition-colors group"
+                                            >
+                                                <td className="p-2.5 text-center font-bold text-neutral-500 text-[11px]">
+                                                    {globalIdx}
+                                                </td>
+                                                <td className="p-2.5 font-bold whitespace-nowrap text-neutral-700">
+                                                    {formatDate(item.date)}
+                                                </td>
+                                                <td className="p-2.5 font-black text-black">
+                                                    <span
+                                                        onClick={() => {
+                                                            sfx.playClick();
+                                                            onPlayTrack(item);
+                                                        }}
+                                                        className="cursor-pointer hover:text-[#FF5722] hover:underline"
+                                                        title="Воспроизвести в плеере"
+                                                    >
+                                                        {item.track}
+                                                    </span>
+                                                </td>
+                                                <td className="p-2.5 font-bold text-[#FF5722]">
+                                                    <span
+                                                        onClick={() => {
+                                                            sfx.playClick();
+                                                            setSearchQuery(item.artist);
+                                                        }}
+                                                        className="cursor-pointer hover:underline"
+                                                        title="Показать все треки артиста"
+                                                    >
+                                                        {item.artist}
+                                                    </span>
+                                                </td>
+                                                <td className="p-2.5 text-neutral-600 truncate max-w-xs" title={item.album}>
+                                                    {item.album || '—'}
+                                                </td>
+                                                <td className="p-2.5 text-center">
+                                                    <button
+                                                        onClick={() => {
+                                                            sfx.playClick();
+                                                            onPlayTrack(item);
+                                                        }}
+                                                        className="w-7 h-7 bg-white group-hover:bg-[#CCFF00] border border-black inline-flex items-center justify-center shadow-[1px_1px_0px_#000] hover:scale-110 transition-transform"
+                                                        title="Воспроизвести сэмпл"
+                                                    >
+                                                        <i className="fa-solid fa-play text-[10px]"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Pagination Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+                        <div className="font-bold text-neutral-600">
+                            Страница <span className="font-black text-black">{currentPage}</span> из <span className="font-black text-black">{totalPages}</span>
+                            <span className="hidden sm:inline ml-2 text-neutral-400">
+                                (Показаны {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalCount)} из {totalCount.toLocaleString()})
+                            </span>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => {
+                                    sfx.playClick();
+                                    setCurrentPage(1);
+                                }}
+                                disabled={currentPage === 1}
+                                className="brutal-btn bg-white px-2.5 py-1 disabled:opacity-40 disabled:cursor-not-allowed font-black"
+                                title="Первая страница"
+                            >
+                                «
+                            </button>
+                            <button
+                                onClick={() => {
+                                    sfx.playClick();
+                                    setCurrentPage(p => Math.max(1, p - 1));
+                                }}
+                                disabled={currentPage === 1}
+                                className="brutal-btn bg-white px-3 py-1 disabled:opacity-40 disabled:cursor-not-allowed font-black flex items-center gap-1"
+                            >
+                                <i className="fa-solid fa-chevron-left text-[10px]"></i>
+                                <span>НАЗАД</span>
+                            </button>
+
+                            <span className="px-3 py-1 bg-black text-[#CCFF00] font-black border border-black">
+                                {currentPage}
+                            </span>
+
+                            <button
+                                onClick={() => {
+                                    sfx.playClick();
+                                    setCurrentPage(p => Math.min(totalPages, p + 1));
+                                }}
+                                disabled={currentPage === totalPages}
+                                className="brutal-btn bg-white px-3 py-1 disabled:opacity-40 disabled:cursor-not-allowed font-black flex items-center gap-1"
+                            >
+                                <span>ВПЕРЕД</span>
+                                <i className="fa-solid fa-chevron-right text-[10px]"></i>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    sfx.playClick();
+                                    setCurrentPage(totalPages);
+                                }}
+                                disabled={currentPage === totalPages}
+                                className="brutal-btn bg-white px-2.5 py-1 disabled:opacity-40 disabled:cursor-not-allowed font-black"
+                                title="Последняя страница"
+                            >
+                                »
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 10. HERO BENTO SECTION & AUDIO PLAYER
+        // ==========================================
+        const HeroPlayerSection = ({
+            activeTrack,
+            isPlaying,
+            togglePlay,
+            progress,
+            duration,
+            volume,
+            setVolume,
+            liveStatus,
+            stats,
+            onSearchArchive,
+            onPlayRandom
+        }) => {
+            const formatTime = (sec) => {
+                const m = Math.floor(sec / 60);
+                const s = Math.floor(sec % 60);
+                return `${m}:${s < 10 ? '0' : ''}${s}`;
+            };
+
+            const progressPct = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0;
+
+            return (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 mb-6">
+                    {/* Player Bento Card (col-span-7) */}
+                    <div className="lg:col-span-7 brutal-card p-5 bg-white text-black flex flex-col justify-between relative overflow-hidden">
+                        {/* Header Status Line */}
+                        <div>
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black pb-3 mb-4">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-6 h-6 bg-black text-[#FF5722] flex items-center justify-center font-mono font-black text-xs border border-black">
+                                        <i className="fa-brands fa-lastfm"></i>
+                                    </span>
+                                    <span className="font-mono font-extrabold text-xs tracking-wider uppercase bg-[#F4F0EA] px-2 py-0.5 border border-black">
+                                        LAST.FM // @Pruushkaa
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    {liveStatus === 'LIVE' ? (
+                                        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-black px-2 py-0.5 border-2 border-black bg-[#CCFF00] text-black shadow-[2px_2px_0px_#000]">
+                                            <span className="w-2 h-2 rounded-full bg-black animate-ping"></span>
+                                            ● СЕЙЧАС ИГРАЕТ // NOW PLAYING
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold px-2 py-0.5 border border-black bg-neutral-100 text-neutral-700">
+                                            <span className="w-2 h-2 rounded-full bg-neutral-400"></span>
+                                            ■ ПОСЛЕДНИЙ ТРЕК // ИСТОРИЯ
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Main Track Display */}
+                            <div className="flex items-center gap-4 mb-4">
+                                <VinylDisc
+                                    isPlaying={isPlaying}
+                                    imageUrl={activeTrack?.image}
+                                    size={96}
+                                />
+
+                                <div className="truncate flex-1">
+                                    <div className="text-[11px] font-mono font-extrabold text-[#FF5722] uppercase tracking-wider mb-0.5">
+                                        {activeTrack?.artist || 'Unknown Artist'}
+                                    </div>
+                                    <h1 className="text-xl sm:text-2xl font-black tracking-tight leading-tight truncate mb-1" title={activeTrack?.track || activeTrack?.name}>
+                                        {activeTrack?.track || activeTrack?.name || 'Plastic Love'}
+                                    </h1>
+                                    <div className="text-xs font-mono text-neutral-600 truncate" title={activeTrack?.album}>
+                                        {activeTrack?.album || 'Single / Expressions'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Animated Canvas Equalizer */}
+                        <div className="mb-4">
+                            <div className="flex items-center justify-between text-[10px] font-mono font-bold text-neutral-500 mb-1 px-1">
+                                <span>CANVAS EQUALIZER SPECTRUM</span>
+                                <span className={isPlaying ? 'text-[#FF5722] font-black' : ''}>
+                                    {isPlaying ? 'ACTIVE AUDIO FREQ' : 'IDLE WAVE'}
+                                </span>
+                            </div>
+                            <AnimatedEqualizer isPlaying={isPlaying} accentColor="#FF5722" />
+                        </div>
+
+                        {/* Controls & Scrubber */}
+                        <div>
+                            {/* Scrubber Bar */}
+                            <div className="mb-3">
+                                <div className="w-full h-3 bg-neutral-200 border-2 border-black cursor-pointer relative overflow-hidden">
+                                    <div
+                                        className="h-full bg-[#CCFF00] border-r-2 border-black transition-all duration-100"
+                                        style={{ width: `${progressPct}%` }}
+                                    ></div>
+                                </div>
+                                <div className="flex justify-between font-mono text-[11px] text-neutral-500 font-bold mt-1 px-0.5">
+                                    <span>{formatTime(progress)}</span>
+                                    <span className="text-neutral-400">30S ITUNES / SYNTH PREVIEW</span>
+                                    <span>{formatTime(duration)}</span>
+                                </div>
+                            </div>
+
+                            {/* Buttons line */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t-2 border-black">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={togglePlay}
+                                        className="brutal-btn bg-[#CCFF00] text-black px-4 py-2 font-mono font-black text-xs uppercase flex items-center gap-2 shadow-[3px_3px_0px_#000] hover:bg-black hover:text-[#CCFF00]"
+                                    >
+                                        <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+                                        <span>{isPlaying ? 'ПАУЗА' : 'СЛУШАТЬ СЭМПЛ'}</span>
+                                    </button>
+
+                                    <button
+                                        onClick={onPlayRandom}
+                                        className="brutal-btn bg-white text-black px-3 py-2 font-mono font-bold text-xs uppercase flex items-center gap-1.5 hover:bg-neutral-100"
+                                        title="Случайный трек из библиотеки"
+                                    >
+                                        <i className="fa-solid fa-shuffle"></i>
+                                        <span className="hidden sm:inline">СЛУЧАЙНЫЙ</span>
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center gap-3 font-mono text-xs">
+                                    {/* Volume */}
+                                    <div className="flex items-center gap-1.5">
+                                        <i className={`fa-solid ${volume === 0 ? 'fa-volume-xmark' : volume < 0.5 ? 'fa-volume-low' : 'fa-volume-high'} text-neutral-600`}></i>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="1"
+                                            step="0.05"
+                                            value={volume}
+                                            onChange={(e) => setVolume(parseFloat(e.target.value))}
+                                            className="w-16 accent-[#FF5722] cursor-pointer"
+                                            title="Громкость"
+                                        />
+                                    </div>
+
+                                    {/* Last.fm link */}
+                                    {activeTrack && (
+                                        <a
+                                            href={`https://www.last.fm/music/${encodeURIComponent(activeTrack.artist || '')}/_/${encodeURIComponent(activeTrack.track || activeTrack.name || '')}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="brutal-btn bg-black text-white px-2.5 py-1.5 font-bold hover:bg-[#FF5722]"
+                                            title="Открыть на Last.fm"
+                                        >
+                                            <i className="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 4 Summary Stat Metric Cards (col-span-5) */}
+                    <div className="lg:col-span-5 grid grid-cols-2 gap-4">
+                        {/* Widget 1 */}
+                        <div className="brutal-card p-4 sm:p-5 flex flex-col justify-between bg-white text-black">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="font-mono text-[10px] sm:text-[11px] font-black uppercase text-neutral-600">
+                                    ВСЕГО СКРОББЛОВ
+                                </span>
+                                <span className="w-6 h-6 bg-[#FF5722] text-white flex items-center justify-center font-mono text-xs border border-black shadow-[1px_1px_0px_#000]">
+                                    <i className="fa-solid fa-compact-disc"></i>
+                                </span>
+                            </div>
+                            <div>
+                                <div className="font-mono text-2xl sm:text-3xl font-black text-black tracking-tight mb-1">
+                                    {(stats?.count || 40092).toLocaleString()}
+                                </div>
+                                <div className="font-mono text-[11px] text-neutral-500 font-bold">
+                                    За 352 дня трекинга
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Widget 2 */}
+                        <div className="brutal-card p-4 sm:p-5 flex flex-col justify-between bg-white text-black">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="font-mono text-[10px] sm:text-[11px] font-black uppercase text-neutral-600">
+                                    УНИКАЛЬНЫХ АРТИСТОВ
+                                </span>
+                                <span className="w-6 h-6 bg-[#00E5FF] text-black flex items-center justify-center font-mono text-xs border border-black shadow-[1px_1px_0px_#000]">
+                                    <i className="fa-solid fa-users"></i>
+                                </span>
+                            </div>
+                            <div>
+                                <div className="font-mono text-2xl sm:text-3xl font-black text-black tracking-tight mb-1">
+                                    {(stats?.uniqueArtists || 2427).toLocaleString()}
+                                </div>
+                                <div className="font-mono text-[11px] text-neutral-500 font-bold">
+                                    {(stats?.uniqueTracks || 6465).toLocaleString()} треков
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Widget 3 */}
+                        <div className="brutal-card p-4 sm:p-5 flex flex-col justify-between bg-white text-black">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="font-mono text-[10px] sm:text-[11px] font-black uppercase text-neutral-600">
+                                    ТОП-АРТИСТ БИБЛИОТЕКИ
+                                </span>
+                                <span className="w-6 h-6 bg-[#CCFF00] text-black flex items-center justify-center font-mono text-xs border border-black shadow-[1px_1px_0px_#000]">
+                                    <i className="fa-solid fa-crown"></i>
+                                </span>
+                            </div>
+                            <div>
+                                <div className="font-mono text-xl sm:text-2xl font-black text-[#FF5722] tracking-tight mb-1 truncate">
+                                    {stats?.topArtists?.[0]?.name || 'Mirèle'}
+                                </div>
+                                <div className="font-mono text-[11px] text-neutral-500 font-bold">
+                                    {stats?.topArtists?.[0]?.count?.toLocaleString() || '2,549'} скробблов ({stats?.topArtists?.[0]?.pct || 6.4}%)
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Widget 4 */}
+                        <div className="brutal-card p-4 sm:p-5 flex flex-col justify-between bg-white text-black">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="font-mono text-[10px] sm:text-[11px] font-black uppercase text-neutral-600">
+                                    ЧАСЫ МУЗЫКИ
+                                </span>
+                                <span className="w-6 h-6 bg-[#B388FF] text-white flex items-center justify-center font-mono text-xs border border-black shadow-[1px_1px_0px_#000]">
+                                    <i className="fa-solid fa-stopwatch"></i>
+                                </span>
+                            </div>
+                            <div>
+                                <div className="font-mono text-2xl sm:text-3xl font-black text-black tracking-tight mb-1">
+                                    ~{(stats?.totalHours || 2272).toLocaleString()} ч.
+                                </div>
+                                <div className="font-mono text-[11px] text-neutral-500 font-bold">
+                                    ~94.7 суток непрерывно
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 11. ADMIN MODAL COMPONENT
+        // ==========================================
+        const AdminModal = ({ isOpen, onClose, onSave, currentApiKey, currentUser }) => {
+            const [key, setKey] = useState(currentApiKey || '');
+            const [user, setUser] = useState(currentUser || 'Pruushkaa');
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+                    <div className="brutal-card p-6 bg-white text-black max-w-md w-full relative">
+                        <div className="flex items-center justify-between border-b-2 border-black pb-3 mb-4">
+                            <h3 className="font-extrabold text-base uppercase">
+                                НАСТРОЙКА LAST.FM API // ROOT
+                            </h3>
+                            <button
+                                onClick={onClose}
+                                className="font-mono font-black text-sm hover:text-red-500"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 font-mono text-xs mb-5">
+                            <div>
+                                <label className="block font-black mb-1">ИМЯ ПОЛЬЗОВАТЕЛЯ LAST.FM:</label>
+                                <input
+                                    type="text"
+                                    value={user}
+                                    onChange={(e) => setUser(e.target.value)}
+                                    className="w-full p-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-[#FF5722]"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block font-black mb-1">API-КЛЮЧ LAST.FM:</label>
+                                <input
+                                    type="text"
+                                    value={key}
+                                    onChange={(e) => setKey(e.target.value)}
+                                    placeholder="Например: 684b6a85757601272919018585e32a99"
+                                    className="w-full p-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-[#FF5722]"
+                                />
+                                <span className="text-[10px] text-neutral-500 mt-1 block">
+                                    Ключ используется для опроса живого статуса Now Playing каждые 15 сек.
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 font-mono text-xs">
+                            <button
+                                onClick={onClose}
+                                className="brutal-btn bg-neutral-200 px-3 py-1.5 font-bold"
+                            >
+                                ОТМЕНА
+                            </button>
+                            <button
+                                onClick={() => {
+                                    onSave(key, user);
+                                    onClose();
+                                }}
+                                className="brutal-btn bg-[#CCFF00] text-black px-4 py-1.5 font-black uppercase"
+                            >
+                                СОХРАНИТЬ
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 12. COMMAND PALETTE (CTRL+K)
+        // ==========================================
+        const CommandPalette = ({ isOpen, onClose, onAction }) => {
+            const [query, setQuery] = useState('');
+
+            useEffect(() => {
+                const handler = (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                        e.preventDefault();
+                        onClose(prev => !prev);
+                    }
+                    if (e.key === 'Escape' && isOpen) {
+                        onClose(false);
+                    }
+                };
+                window.addEventListener('keydown', handler);
+                return () => window.removeEventListener('keydown', handler);
+            }, [isOpen, onClose]);
+
+            if (!isOpen) return null;
+
+            const commands = [
+                { id: 'home', label: 'Перейти на Главную страницу', icon: 'fa-house', run: () => window.location.href = 'index.html' },
+                { id: 'tracks', label: 'Открыть Маршруты // GPX', icon: 'fa-map-location-dot', run: () => window.location.href = 'index.html#tracks' },
+                { id: 'photos', label: 'Открыть Фотоархив', icon: 'fa-camera-retro', run: () => window.location.href = 'index.html#photos' },
+                { id: 'archive', label: 'Перейти к Архиву треков', icon: 'fa-list', run: () => document.getElementById('archive-section')?.scrollIntoView({ behavior: 'smooth' }) },
+                { id: 'random', label: 'Воспроизвести случайный трек', icon: 'fa-shuffle', run: () => onAction('random') },
+                { id: 'mirele', label: 'Включить рекордный репит (Mirèle — Метеорит)', icon: 'fa-meteor', run: () => onAction('mirele') }
+            ];
+
+            const filtered = commands.filter(c => c.label.toLowerCase().includes(query.toLowerCase()));
+
+            return (
+                <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center pt-20 p-4">
+                    <div className="brutal-card p-4 bg-white text-black max-w-lg w-full">
+                        <div className="relative mb-3">
+                            <i className="fa-solid fa-terminal absolute left-3 top-3 text-[#FF5722]"></i>
+                            <input
+                                type="text"
+                                autoFocus
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder="Команда или действие... (ESC для выхода)"
+                                className="w-full pl-9 pr-4 py-2 border-2 border-black font-mono text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#FF5722]"
+                            />
+                        </div>
+
+                        <div className="space-y-1 font-mono text-xs max-h-60 overflow-y-auto">
+                            {filtered.map(c => (
+                                <div
+                                    key={c.id}
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        c.run();
+                                        onClose(false);
+                                    }}
+                                    className="p-2 border border-black hover:bg-[#CCFF00] cursor-pointer flex items-center justify-between"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <i className={`fa-solid ${c.icon}`}></i>
+                                        <span className="font-bold">{c.label}</span>
+                                    </div>
+                                    <span className="text-[10px] text-neutral-500">ENTER ↵</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 13. MAIN MUSIC APPLICATION COMPONENT
+        // ==========================================
+        const MusicApp = () => {
+            const [sfxEnabled, setSfxEnabled] = useState(true);
+            const [darkMode, setDarkMode] = useState(false);
+            const [cmdOpen, setCmdOpen] = useState(false);
+            const [adminOpen, setAdminOpen] = useState(false);
+
+            // Data State
+            const [summaryData, setSummaryData] = useState(() => {
+                if (typeof window !== 'undefined' && window.MUSIC_SUMMARY_DATA) {
+                    return window.MUSIC_SUMMARY_DATA;
+                }
+                return null;
+            });
+            const [fullScrobbles, setFullScrobbles] = useState([]);
+            const [loadingFull, setLoadingFull] = useState(false);
+
+            // Period Filter: 'ALL' | '30D' | '7D' | '2026' | '2025'
+            const [periodFilter, setPeriodFilter] = useState('ALL');
+
+            // Archive Filter State
+            const [searchQuery, setSearchQuery] = useState('');
+            const [selectedDay, setSelectedDay] = useState(null);
+
+            // Live Last.fm & Player State
+            const [lastFmApiKey, setLastFmApiKey] = useState(CONFIG.LASTFM_API_KEY || '');
+            const [lastFmUser, setLastFmUser] = useState(CONFIG.LASTFM_USER || 'Pruushkaa');
+            const [liveTrack, setLiveTrack] = useState(null);
+            const [liveStatus, setLiveStatus] = useState('OFFLINE'); // 'LIVE' | 'OFFLINE'
+
+            // Audio Player
+            const [activeTrack, setActiveTrack] = useState(null);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [progress, setProgress] = useState(0);
+            const [duration, setDuration] = useState(30);
+            const [volume, setVolume] = useState(0.7);
+            const audioRef = useRef(null);
+            const synthRef = useRef(null);
+
+            // Initialize Theme & SFX from localStorage
+            useEffect(() => {
+                const savedTheme = localStorage.getItem('archive_theme');
+                if (savedTheme === 'cyber') {
+                    setDarkMode(true);
+                    document.body.classList.add('theme-cyber');
+                }
+                const savedSfx = localStorage.getItem('pruushkaa_sfx');
+                if (savedSfx !== null) {
+                    const isEn = savedSfx === 'true';
+                    setSfxEnabled(isEn);
+                    sfx.enabled = isEn;
+                }
+            }, []);
+
+            // Theme toggle
+            const toggleTheme = () => {
+                sfx.playClick();
+                triggerGlitchSpike(0.8);
+                const next = !darkMode;
+                setDarkMode(next);
+                if (next) {
+                    document.body.classList.add('theme-cyber');
+                    localStorage.setItem('archive_theme', 'cyber');
+                } else {
+                    document.body.classList.remove('theme-cyber');
+                    localStorage.setItem('archive_theme', 'light');
+                }
+            };
+
+            // SFX toggle
+            const toggleSfx = () => {
+                const next = !sfxEnabled;
+                setSfxEnabled(next);
+                sfx.enabled = next;
+                localStorage.setItem('pruushkaa_sfx', String(next));
+                if (next) sfx.playSuccess();
+            };
+
+            // 1. Fetch Summary Data if not already injected
+            useEffect(() => {
+                if (summaryData) {
+                    const latest = summaryData.latestDate;
+                    const sampleTrack = summaryData.allTime?.topTracks?.[0] || {
+                        track: 'Plastic Love',
+                        artist: 'Mariya Takeuchi',
+                        album: 'Expressions'
+                    };
+                    setActiveTrack(sampleTrack);
+                    return;
+                }
+
+                const loadSummary = async () => {
+                    const targets = [
+                        'public/data/music-summary.json',
+                        'data/music-summary.json',
+                        './public/data/music-summary.json'
+                    ];
+                    for (const url of targets) {
+                        try {
+                            const res = await fetch(url);
+                            if (res.ok) {
+                                const json = await res.json();
+                                setSummaryData(json);
+                                if (json.allTime?.topTracks?.[0]) {
+                                    setActiveTrack(json.allTime.topTracks[0]);
+                                }
+                                break;
+                            }
+                        } catch (e) {}
+                    }
+                };
+                loadSummary();
+            }, [summaryData]);
+
+            // 2. Fetch Full Dataset for Archive (in background)
+            useEffect(() => {
+                let isMounted = true;
+                const loadFullScrobbles = async () => {
+                    setLoadingFull(true);
+                    const targets = [
+                        'public/data/lastfmstats-Pruushkaa.json',
+                        'data/lastfmstats-Pruushkaa.json',
+                        './public/data/lastfmstats-Pruushkaa.json'
+                    ];
+
+                    for (const url of targets) {
+                        try {
+                            const res = await fetch(url);
+                            if (res.ok) {
+                                const json = await res.json();
+                                if (isMounted && Array.isArray(json?.scrobbles)) {
+                                    setFullScrobbles(json.scrobbles);
+                                    setLoadingFull(false);
+                                    // Set latest scrobble as active track if not live
+                                    const latest = json.scrobbles[json.scrobbles.length - 1];
+                                    if (latest && !liveTrack) {
+                                        setActiveTrack(latest);
+                                    }
+                                    return;
+                                }
+                            }
+                        } catch (e) {}
+                    }
+                    if (isMounted) setLoadingFull(false);
+                };
+
+                loadFullScrobbles();
+                return () => { isMounted = false; };
+            }, [liveTrack]);
+
+            // 3. Live Last.fm Poll
+            useEffect(() => {
+                if (!lastFmApiKey || lastFmApiKey.length < 16) return;
+                let isMounted = true;
+
+                const fetchLive = async () => {
+                    try {
+                        const url = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${encodeURIComponent(lastFmUser)}&api_key=${encodeURIComponent(lastFmApiKey)}&format=json&limit=2`;
+                        const res = await fetch(url);
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        const rawTrack = data?.recenttracks?.track;
+                        const trackList = Array.isArray(rawTrack) ? rawTrack : (rawTrack ? [rawTrack] : []);
+                        if (trackList.length > 0 && isMounted) {
+                            const first = trackList[0];
+                            const isNow = first['@attr']?.nowplaying === 'true';
+                            const parsed = {
+                                track: first.name,
+                                artist: first.artist?.['#text'] || first.artist?.name || 'Unknown',
+                                album: first.album?.['#text'] || '',
+                                image: first.image?.find(img => img.size === 'large')?.['#text'] || '',
+                                nowPlaying: isNow
+                            };
+                            setLiveTrack(parsed);
+                            setLiveStatus(isNow ? 'LIVE' : 'OFFLINE');
+                            if (isNow) {
+                                setActiveTrack(parsed);
+                            }
+                        }
+                    } catch (e) {}
+                };
+
+                fetchLive();
+                const timer = setInterval(fetchLive, CONFIG.LASTFM_POLL_INTERVAL_MS || 15000);
+                return () => {
+                    isMounted = false;
+                    clearInterval(timer);
+                };
+            }, [lastFmApiKey, lastFmUser]);
+
+            // 4. Audio Playback Engine (iTunes Search + Web Audio Synth Fallback)
+            const stopAudio = useCallback(() => {
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                    audioRef.current = null;
+                }
+                if (synthRef.current) {
+                    synthRef.current.stop();
+                    synthRef.current = null;
+                }
+                setIsPlaying(false);
+                setProgress(0);
+            }, []);
+
+            const playTrackSample = useCallback(async (trackObj) => {
+                stopAudio();
+                setActiveTrack(trackObj);
+                setIsPlaying(true);
+                setProgress(0);
+                setDuration(30);
+
+                const artist = trackObj.artist || '';
+                const title = trackObj.track || trackObj.name || '';
+
+                try {
+                    const q = encodeURIComponent(`${artist} ${title}`);
+                    const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=song&limit=1`);
+                    const data = await res.json();
+                    const preview = data?.results?.[0]?.previewUrl;
+
+                    if (preview) {
+                        const audio = new Audio(preview);
+                        audio.volume = volume;
+                        audio.onended = () => {
+                            setIsPlaying(false);
+                            setProgress(0);
+                        };
+                        audio.ontimeupdate = () => {
+                            setProgress(Math.floor(audio.currentTime));
+                            setDuration(Math.floor(audio.duration) || 30);
+                        };
+                        audioRef.current = audio;
+                        await audio.play();
+                        return;
+                    }
+                } catch (e) {
+                    // iTunes preview unavailable or offline: activate melodic synth fallback
+                }
+
+                // Melodic Synthesizer Fallback
+                synthRef.current = sfx.playMelodicSample(title.length);
+            }, [volume, stopAudio]);
+
+            const togglePlay = () => {
+                sfx.playClick();
+                triggerGlitchSpike(0.6);
+                if (isPlaying) {
+                    stopAudio();
+                } else if (activeTrack) {
+                    playTrackSample(activeTrack);
+                }
+            };
+
+            // Volume change
+            useEffect(() => {
+                if (audioRef.current) {
+                    audioRef.current.volume = volume;
+                }
+            }, [volume]);
+
+            // Scrubber timer if playing synth
+            useEffect(() => {
+                let interval;
+                if (isPlaying && !audioRef.current) {
+                    interval = setInterval(() => {
+                        setProgress(prev => {
+                            if (prev >= 30) {
+                                stopAudio();
+                                return 0;
+                            }
+                            return prev + 1;
+                        });
+                    }, 1000);
+                }
+                return () => clearInterval(interval);
+            }, [isPlaying, stopAudio]);
+
+            // Computed Stats based on periodFilter
+            const currentStats = useMemo(() => {
+                // If full scrobbles are loaded and a period is chosen:
+                if (fullScrobbles && fullScrobbles.length > 0 && typeof window.MusicAnalytics !== 'undefined') {
+                    const filtered = window.MusicAnalytics.filterByPeriod(fullScrobbles, periodFilter);
+                    return window.MusicAnalytics.calculateStats(filtered);
+                }
+
+                // Otherwise fallback to precomputed summary slices
+                if (!summaryData) return null;
+                if (periodFilter === '30D') return summaryData.last30Days || summaryData.allTime;
+                if (periodFilter === '7D') return summaryData.last7Days || summaryData.allTime;
+                return summaryData.allTime;
+            }, [summaryData, fullScrobbles, periodFilter]);
+
+            // CSV Export
+            const handleExportCsv = () => {
+                sfx.playSuccess();
+                const list = fullScrobbles.length > 0 ? fullScrobbles : (summaryData?.allTime?.topTracks || []);
+                let csv = 'Timestamp,Date,Artist,Track,Album\n';
+                const count = Math.min(list.length, 5000); // safety cap for direct export
+                for (let i = 0; i < count; i++) {
+                    const item = list[i];
+                    const d = item.date ? new Date(item.date).toISOString() : '';
+                    const art = (item.artist || '').replace(/"/g, '""');
+                    const trk = (item.track || item.name || '').replace(/"/g, '""');
+                    const alb = (item.album || '').replace(/"/g, '""');
+                    csv += `"${item.date || ''}","${d}","${art}","${trk}","${alb}"\n`;
+                }
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `pruushkaa_scrobbles_${periodFilter}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            return (
+                <div className="min-h-screen relative flex flex-col justify-between selection:bg-[#CCFF00] selection:text-black">
+                    <GlitchCanvas darkMode={darkMode} />
+
+                    <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-6 py-4 w-full">
+                        {/* Header */}
+                        <header className="brutal-card p-3 sm:p-4 mb-4 flex flex-wrap items-center justify-between gap-3 bg-white text-black">
+                            <div className="flex items-center gap-3">
+                                <a
+                                    href="index.html"
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        triggerGlitchSpike(1.5);
+                                    }}
+                                    className="w-10 h-10 bg-[#FF5722] border-2 border-black flex items-center justify-center font-mono font-extrabold text-white text-lg cursor-pointer shadow-[3px_3px_0px_#000] active:translate-x-0.5 active:translate-y-0.5"
+                                    title="На Главную"
+                                >
+                                    P//A
+                                </a>
+                                <div>
+                                    <div className="font-extrabold text-base sm:text-lg tracking-tight leading-none flex items-center gap-2">
+                                        <span>PRUUSHKAA_ARCHIVE</span>
+                                        <span className="text-[10px] font-mono bg-[#CCFF00] px-1.5 py-0.5 border border-black">
+                                            v3.1
+                                        </span>
+                                    </div>
+                                    <div className="font-mono text-[11px] text-neutral-600 font-bold">
+                                        SYS_STATUS: MUSIC_RADAR // 40,092 SCROBBLES LOGGED
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                                <button
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setAdminOpen(true);
+                                    }}
+                                    className="brutal-btn bg-[#FF5722] text-white px-3 py-1.5 font-bold flex items-center gap-1.5"
+                                    title="Настройка Last.fm API ключа"
+                                >
+                                    <i className="fa-solid fa-sliders"></i>
+                                    <span>API</span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setCmdOpen(true);
+                                    }}
+                                    className="brutal-btn bg-[#F4F0EA] px-3 py-1.5 font-bold flex items-center gap-2"
+                                >
+                                    <i className="fa-solid fa-terminal text-[#FF5722]"></i>
+                                    <span>CMD</span>
+                                    <kbd className="bg-black text-white px-1 text-[10px]">CTRL+K</kbd>
+                                </button>
+
+                                <button
+                                    onClick={toggleSfx}
+                                    className={`brutal-btn px-3 py-1.5 font-bold ${
+                                        sfxEnabled ? 'bg-[#CCFF00] text-black' : 'bg-neutral-200 text-neutral-600'
+                                    }`}
+                                >
+                                    <i className={`fa-solid ${sfxEnabled ? 'fa-volume-high' : 'fa-volume-xmark'} mr-1`}></i>
+                                    SFX: {sfxEnabled ? 'ON' : 'OFF'}
+                                </button>
+
+                                <button
+                                    onClick={toggleTheme}
+                                    className="brutal-btn bg-black text-white px-3 py-1.5 font-bold"
+                                >
+                                    {darkMode ? '☀ LIGHT' : '☾ CYBER'}
+                                </button>
+                            </div>
+                        </header>
+
+                        {/* Navigation Bar */}
+                        <nav className="brutal-card p-2.5 mb-6 bg-white text-black flex flex-wrap items-center justify-between gap-2 font-mono text-xs">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <a
+                                    href="index.html"
+                                    onMouseEnter={() => sfx.playHover()}
+                                    onClick={() => sfx.playClick()}
+                                    className="brutal-btn px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5 bg-[#F4F0EA] text-black hover:bg-neutral-200"
+                                >
+                                    <i className="fa-solid fa-compact-disc"></i>
+                                    <span>ГЛАВНАЯ // МУЗЫКА И СОЦСЕТИ</span>
+                                </a>
+
+                                <a
+                                    href="music.html"
+                                    className="brutal-btn px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5 bg-[#FF5722] text-white shadow-[3px_3px_0px_#000]"
+                                >
+                                    <i className="fa-solid fa-chart-simple"></i>
+                                    <span>АНАЛИТИКА МУЗЫКИ // 40K</span>
+                                    <span className="text-[10px] bg-black text-[#CCFF00] px-1 py-0.2">ACTIVE</span>
+                                </a>
+
+                                <a
+                                    href="index.html#tracks"
+                                    onMouseEnter={() => sfx.playHover()}
+                                    onClick={() => sfx.playClick()}
+                                    className="brutal-btn px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5 bg-[#F4F0EA] text-black hover:bg-neutral-200"
+                                >
+                                    <i className="fa-solid fa-map-location-dot"></i>
+                                    <span>МАРШРУТЫ // GPX</span>
+                                </a>
+
+                                <a
+                                    href="index.html#photos"
+                                    onMouseEnter={() => sfx.playHover()}
+                                    onClick={() => sfx.playClick()}
+                                    className="brutal-btn px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5 bg-[#F4F0EA] text-black hover:bg-neutral-200"
+                                >
+                                    <i className="fa-solid fa-camera-retro"></i>
+                                    <span>ФОТОАРХИВ</span>
+                                </a>
+
+                                <a
+                                    href="index.html#wiki"
+                                    onMouseEnter={() => sfx.playHover()}
+                                    onClick={() => sfx.playClick()}
+                                    className="brutal-btn px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5 bg-[#F4F0EA] text-black hover:bg-neutral-200"
+                                >
+                                    <i className="fa-solid fa-book-journal-whills"></i>
+                                    <span>ВИКИ СРП</span>
+                                </a>
+
+                                <a
+                                    href="index.html#tools"
+                                    onMouseEnter={() => sfx.playHover()}
+                                    onClick={() => sfx.playClick()}
+                                    className="brutal-btn px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5 bg-[#F4F0EA] text-black hover:bg-neutral-200"
+                                >
+                                    <i className="fa-solid fa-screwdriver-wrench"></i>
+                                    <span>ТЕРМИНАЛ УТИЛИТ</span>
+                                </a>
+                            </div>
+
+                            <button
+                                onClick={handleExportCsv}
+                                className="brutal-btn bg-[#CCFF00] text-black px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5"
+                                title="Экспорт CSV"
+                            >
+                                <i className="fa-solid fa-file-export"></i>
+                                <span>ЭКСПОРТ CSV</span>
+                            </button>
+                        </nav>
+
+                        {/* HERO SECTION */}
+                        <HeroPlayerSection
+                            activeTrack={activeTrack}
+                            isPlaying={isPlaying}
+                            togglePlay={togglePlay}
+                            progress={progress}
+                            duration={duration}
+                            volume={volume}
+                            setVolume={setVolume}
+                            liveStatus={liveStatus}
+                            stats={currentStats}
+                            onSearchArchive={(artist) => {
+                                setSearchQuery(artist);
+                                document.getElementById('archive-section')?.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            onPlayRandom={() => {
+                                sfx.playClick();
+                                if (fullScrobbles.length > 0) {
+                                    const rand = fullScrobbles[Math.floor(Math.random() * fullScrobbles.length)];
+                                    playTrackSample(rand);
+                                } else if (summaryData?.allTime?.topTracks) {
+                                    const tracks = summaryData.allTime.topTracks;
+                                    const rand = tracks[Math.floor(Math.random() * tracks.length)];
+                                    playTrackSample(rand);
+                                }
+                            }}
+                        />
+
+                        {/* ON REPEAT / HYPERFIXATIONS */}
+                        <HyperfixationsBlock
+                            onPlayTrack={playTrackSample}
+                            onSearchArchive={(q) => {
+                                setSearchQuery(q);
+                                document.getElementById('archive-section')?.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                        />
+
+                        {/* ACTIVITY ANALYTICS: HOURLY CHART & CALENDAR HEATMAP */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+                            <HourlyRadarChart
+                                hourlyData={currentStats?.hourly}
+                                darkMode={darkMode}
+                            />
+                            <ActivityHeatmap
+                                dailyData={summaryData?.allTime?.daily || {}}
+                                selectedDay={selectedDay}
+                                onSelectDay={(dayKey) => {
+                                    setSelectedDay(dayKey);
+                                    if (dayKey) {
+                                        document.getElementById('archive-section')?.scrollIntoView({ behavior: 'smooth' });
+                                    }
+                                }}
+                                darkMode={darkMode}
+                            />
+                        </div>
+
+                        {/* BENTO CHARTS (TOP ARTISTS, ALBUMS, TRACKS WITH PERIOD FILTER) */}
+                        <BentoChartsSection
+                            stats={currentStats}
+                            periodFilter={periodFilter}
+                            setPeriodFilter={setPeriodFilter}
+                            onPlayTrack={playTrackSample}
+                            onSearchArchive={(q) => {
+                                setSearchQuery(q);
+                                document.getElementById('archive-section')?.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                        />
+
+                        {/* INTERACTIVE TRACK ARCHIVE TABLE */}
+                        <ScrobblesArchiveTable
+                            scrobbles={fullScrobbles.length > 0 ? fullScrobbles : (summaryData?.allTime?.topTracks || [])}
+                            searchQuery={searchQuery}
+                            setSearchQuery={setSearchQuery}
+                            selectedDay={selectedDay}
+                            setSelectedDay={setSelectedDay}
+                            onPlayTrack={playTrackSample}
+                            onExportCsv={handleExportCsv}
+                            loadingFull={loadingFull}
+                        />
+
+                        {/* FOOTER */}
+                        <footer className="brutal-card p-4 bg-black text-white font-mono text-xs flex flex-col sm:flex-row items-center justify-between gap-3 mt-8">
+                            <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 bg-[#CCFF00] inline-block"></span>
+                                <span>PRUUSHKAA_ARCHIVE // MUSIC_RADAR ANALYTICS v3.1</span>
+                            </div>
+                            <div className="text-neutral-400">
+                                LAST.FM: <span className="text-[#FF5722] font-bold">@Pruushkaa</span> // 40,092 SCROBBLES LOGGED
+                            </div>
+                            <button
+                                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                                className="brutal-btn bg-[#CCFF00] text-black px-3 py-1 font-black"
+                            >
+                                НАВЕРХ ↑
+                            </button>
+                        </footer>
+                    </div>
+
+                    {/* Modals */}
+                    <AdminModal
+                        isOpen={adminOpen}
+                        onClose={() => setAdminOpen(false)}
+                        onSave={(key, user) => {
+                            setLastFmApiKey(key);
+                            setLastFmUser(user);
+                            localStorage.setItem('pruushkaa_lastfm_key', key);
+                            localStorage.setItem('pruushkaa_lastfm_user', user);
+                        }}
+                        currentApiKey={lastFmApiKey}
+                        currentUser={lastFmUser}
+                    />
+
+                    <CommandPalette
+                        isOpen={cmdOpen}
+                        onClose={setCmdOpen}
+                        onAction={(action) => {
+                            if (action === 'random') {
+                                if (fullScrobbles.length > 0) {
+                                    playTrackSample(fullScrobbles[Math.floor(Math.random() * fullScrobbles.length)]);
+                                }
+                            } else if (action === 'mirele') {
+                                playTrackSample({ track: 'Метеорит', artist: 'Mirèle', album: 'Косички' });
+                            }
+                        }}
+                    />
+                </div>
+            );
+        };
+
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            componentDidCatch(error, errorInfo) {
+                console.error("ErrorBoundary caught error:", error, errorInfo);
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div style={{ padding: '24px', fontFamily: 'monospace', background: '#F4F0EA', minHeight: '100vh', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ maxWidth: '600px', border: '4px solid #000', padding: '24px', background: '#fff', boxShadow: '8px 8px 0px #000' }}>
+                                <div style={{ background: '#FF5722', color: '#fff', padding: '6px 12px', fontWeight: '900', display: 'inline-block', marginBottom: '12px' }}>
+                                    MUSIC_RADAR // ОШИБКА ИНТЕРФЕЙСА
+                                </div>
+                                <h2 style={{ fontSize: '18px', fontWeight: '900', marginBottom: '8px' }}>ПРОИЗОШЕЛ СБОЙ В АНАЛИТИКЕ</h2>
+                                <p style={{ fontSize: '12px', color: '#555', marginBottom: '16px' }}>{this.state.error?.message || 'Неизвестная ошибка рендеринга'}</p>
+                                <button
+                                    onClick={() => window.location.reload()}
+                                    style={{ background: '#CCFF00', color: '#000', border: '3px solid #000', padding: '8px 16px', fontWeight: '900', cursor: 'pointer', boxShadow: '3px 3px 0px #000' }}
+                                >
+                                    ПЕРЕЗАГРУЗИТЬ СТРАНИЦУ
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <ErrorBoundary>
+                <MusicApp />
+            </ErrorBoundary>
+        );
+    </script>
+</body>
+</html>
