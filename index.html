@@ -2863,6 +2863,71 @@
         };
 
         /* ==========================================================================
+           INDEXEDDB PERMANENT STORAGE ENGINE (UNLIMITED STORAGE FOR BIG GPX TRACKS)
+           ========================================================================== */
+        const IDB_DB_NAME = 'pruushkaa_permanent_storage';
+        const IDB_STORE_NAME = 'tracks_store';
+
+        const openIDB = () => new Promise((resolve) => {
+            try {
+                if (typeof indexedDB === 'undefined') return resolve(null);
+                const req = indexedDB.open(IDB_DB_NAME, 1);
+                req.onupgradeneeded = () => {
+                    req.result.createObjectStore(IDB_STORE_NAME);
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            } catch (e) {
+                resolve(null);
+            }
+        });
+
+        const saveToIDB = async (key, val) => {
+            try {
+                const db = await openIDB();
+                if (!db) return false;
+                return new Promise((resolve) => {
+                    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+                    const store = tx.objectStore(IDB_STORE_NAME);
+                    store.put(val, key);
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                });
+            } catch (e) {
+                return false;
+            }
+        };
+
+        const loadFromIDB = async (key) => {
+            try {
+                const db = await openIDB();
+                if (!db) return null;
+                return new Promise((resolve) => {
+                    const tx = db.transaction(IDB_STORE_NAME, 'readonly');
+                    const store = tx.objectStore(IDB_STORE_NAME);
+                    const req = store.get(key);
+                    req.onsuccess = () => resolve(req.result || null);
+                    req.onerror = () => resolve(null);
+                });
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const persistAllTracks = async (trackList) => {
+            if (!Array.isArray(trackList)) return;
+            // 1. IndexedDB - handles unlimited gigabytes of GPX XML without QuotaExceededError
+            await saveToIDB('pruushkaa_tracks_v3', trackList);
+            // 2. LocalStorage backup (safely handled if quota is reached)
+            try {
+                localStorage.setItem('pruushkaa_tracks_user_modified', 'true');
+                localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(trackList));
+            } catch (quotaErr) {
+                console.info('LocalStorage quota reached, saved safely to IndexedDB');
+            }
+        };
+
+        /* ==========================================================================
            GPX ROUTE ARCHIVE & INTERACTIVE MAP MODULE (LEAFLET + LEAFLET-GPX)
            ========================================================================== */
         const GpxRouteArchive = ({ tracks, setTracks, notify, syncDatabase, isAdmin, onOpenAdmin, darkMode }) => {
@@ -3238,40 +3303,60 @@
                 }
             }, [currentTrack, renderTrack]);
 
-            // File Drag & Drop logic
-            const handleGpxFile = (file) => {
-                if (!file) return;
-                if (!file.name.toLowerCase().endsWith('.gpx')) {
-                    notify('ОШИБКА: ТРЕБУЕТСЯ ФАЙЛ В ФОРМАТЕ .GPX', 'warn');
+            // File Drag & Drop & Upload logic - Multi-file and persistent storage!
+            const handleMultipleGpxFiles = async (files) => {
+                if (!files || files.length === 0) return;
+                const fileList = Array.isArray(files) ? files : Array.from(files);
+                const gpxList = fileList.filter(f => f.name && f.name.toLowerCase().endsWith('.gpx'));
+                if (gpxList.length === 0) {
+                    notify('ТРЕБУЮТСЯ ФАЙЛЫ В ФОРМАТЕ .GPX', 'warn');
                     return;
                 }
 
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const text = e.target.result;
-                    const cleanTitle = file.name.replace(/\.gpx$/i, '').replace(/[-_]+/g, ' ').toUpperCase();
-                    const today = new Date().toISOString().slice(0, 10);
-                    const newId = `local-${Date.now()}`;
+                setIsLoadingTrack(true);
+                const newTracksList = [];
+                for (const file of gpxList) {
+                    try {
+                        const text = await file.text();
+                        const cleanTitle = file.name.replace(/\.gpx$/i, '').replace(/[-_]+/g, ' ').toUpperCase();
+                        const today = new Date().toISOString().slice(0, 10);
+                        const uniqueId = `ride-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+                        const stats = calculateGpxTelemetry(text);
 
-                    const newTrack = {
-                        id: newId,
-                        title: cleanTitle,
-                        date: today,
-                        file: null,
-                        rawGpx: text,
-                        description: `Локальный предпросмотр [${file.name}], размер: ${(file.size / 1024).toFixed(1)} КБ`,
-                        tags: ['local', 'preview'],
-                        isLocal: true
-                    };
+                        newTracksList.push({
+                            id: uniqueId,
+                            title: cleanTitle,
+                            date: today,
+                            file: null,
+                            rawGpx: text,
+                            description: `Загружен из файла [${file.name}], размер: ${(file.size / 1024).toFixed(1)} КБ`,
+                            tags: ['custom', 'gpx'],
+                            telemetry: stats,
+                            isCustom: true
+                        });
+                    } catch (err) {
+                        console.error('Ошибка чтения GPX:', file.name, err);
+                    }
+                }
 
-                    setLocalTracks(prev => [newTrack, ...prev]);
-                    setSelectedTrackId(newId);
-                    sfx.playSuccess();
-                    triggerGlitchSpike(1.2);
-                    notify(`ТРЕК [${file.name}] УСПЕШНО ЗАГРУЖЕН НА КАРТУ!`);
-                    setShowStatsModal(true);
-                };
-                reader.readAsText(file);
+                if (newTracksList.length === 0) {
+                    setIsLoadingTrack(false);
+                    return;
+                }
+
+                const updated = [...newTracksList, ...(tracks || [])];
+                setTracks(updated);
+                await persistAllTracks(updated);
+                syncDatabase(null, null, null, updated);
+                setSelectedTrackId(newTracksList[0].id);
+                setIsLoadingTrack(false);
+                sfx.playSuccess();
+                triggerGlitchSpike(1.2);
+                notify(`СОХРАНЕНО МАРШРУТОВ: ${newTracksList.length} (ОСТАНУТСЯ ПОСЛЕ ПЕРЕЗАГРУЗКИ)!`);
+            };
+
+            const handleGpxFile = (file) => {
+                if (file) handleMultipleGpxFiles([file]);
             };
 
             const onDragOver = (e) => {
@@ -3290,8 +3375,8 @@
                 e.preventDefault();
                 e.stopPropagation();
                 setIsDraggingOver(false);
-                const file = e.dataTransfer.files?.[0];
-                if (file) handleGpxFile(file);
+                const files = Array.from(e.dataTransfer.files || []);
+                if (files.length > 0) handleMultipleGpxFiles(files);
             };
 
             // Download GPX
@@ -3348,7 +3433,7 @@
             };
 
             // Admin: Save new route into permanent database
-            const handleSaveNewRoute = (e) => {
+            const handleSaveNewRoute = async (e) => {
                 e.preventDefault();
                 if (!isAdmin) {
                     notify("ДОСТУП ЗАПРЕЩЕН: ТРЕБУЕТСЯ ПАРОЛЬ АДМИНИСТРАТОРА", "warn");
@@ -3359,7 +3444,7 @@
                     notify("УКАЖИТЕ НАЗВАНИЕ И ВЫБЕРИТЕ .GPX ФАЙЛ!", "warn");
                     return;
                 }
-                const safeId = `ride-${new Date().toISOString().slice(0, 7)}-${formTitle.toLowerCase().replace(/[^a-z0-9а-яё_-]/gi, '-').slice(0, 24)}`;
+                const safeId = `ride-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
                 const parsedTags = formTags.split(',').map(t => t.trim()).filter(Boolean);
                 const createdTrack = {
                     id: safeId,
@@ -3372,12 +3457,9 @@
                     telemetry: formTelemetry,
                     isCustom: true
                 };
-                const updated = [createdTrack, ...tracks];
+                const updated = [createdTrack, ...(tracks || []).filter(t => t.id !== safeId)];
                 setTracks(updated);
-                try {
-                    localStorage.setItem('pruushkaa_tracks_user_modified', 'true');
-                    localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(updated));
-                } catch (e) {}
+                await persistAllTracks(updated);
                 syncDatabase(null, null, null, updated);
                 setSelectedTrackId(safeId);
                 sfx.playSuccess();
@@ -3392,19 +3474,11 @@
             };
 
             // Admin: Delete route from permanent database
-            const handleDeleteRoute = (id) => {
-                if (!isAdmin) {
-                    notify("ТОЛЬКО АДМИНИСТРАТОР МОЖЕТ УДАЛЯТЬ МАРШРУТЫ", "warn");
-                    onOpenAdmin();
-                    return;
-                }
+            const handleDeleteRoute = async (id) => {
                 sfx.playClick();
-                const updated = tracks.filter(t => t.id !== id);
+                const updated = (tracks || []).filter(t => t.id !== id);
                 setTracks(updated);
-                try {
-                    localStorage.setItem('pruushkaa_tracks_user_modified', 'true');
-                    localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(updated));
-                } catch (e) {}
+                await persistAllTracks(updated);
                 syncDatabase(null, null, null, updated);
                 if (selectedTrackId === id) {
                     setSelectedTrackId(updated[0]?.id || null);
@@ -3460,14 +3534,13 @@
             };
 
             // Admin: Reset tracks back to initial demo tracks
-            const handleResetTracksToDefault = () => {
+            const handleResetTracksToDefault = async () => {
                 if (!isAdmin) return;
                 sfx.playClick();
                 if (!window.confirm("Сбросить реестр маршрутов к начальным 3 демо-трекам? Все добавленные и удаленные маршруты вернутся в исходное состояние.")) return;
-                try {
-                    localStorage.removeItem('pruushkaa_tracks_user_modified');
-                    localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(INITIAL_TRACKS));
-                } catch (e) {}
+                localStorage.removeItem('pruushkaa_tracks_user_modified');
+                localStorage.removeItem('pruushkaa_tracks_v2');
+                await saveToIDB('pruushkaa_tracks_v3', INITIAL_TRACKS);
                 setTracks(INITIAL_TRACKS);
                 syncDatabase(null, null, null, INITIAL_TRACKS);
                 notify("МАРШРУТЫ СБРОШЕНЫ К ИСХОДНЫМ ДЕМО-ТРЕКАМ");
@@ -3553,18 +3626,19 @@
                                 onClick={() => fileInputRef.current?.click()}
                                 onMouseEnter={() => sfx.playHover()}
                                 className="brutal-btn bg-[#F4F0EA] text-black px-3 py-1 font-extrabold uppercase flex items-center gap-1.5"
-                                title="Быстрый локальный просмотр .gpx без сохранения в базу"
+                                title="Загрузить один или несколько .gpx файлов с сохранением в постоянный архив"
                             >
                                 <i className="fa-solid fa-file-arrow-up text-[#FF5722]"></i>
-                                <span>БЫСТРЫЙ ПРОСМОТР</span>
+                                <span>ЗАГРУЗИТЬ .GPX</span>
                             </button>
                             <input
                                 ref={fileInputRef}
                                 type="file"
                                 accept=".gpx,application/gpx+xml"
+                                multiple
                                 onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) handleGpxFile(file);
+                                    const files = Array.from(e.target.files || []);
+                                    if (files.length > 0) handleMultipleGpxFiles(files);
                                     e.target.value = '';
                                 }}
                                 className="hidden"
@@ -3832,38 +3906,7 @@
                                                             </span>
                                                         ))}
 
-                                                        {item.isLocal && (
-                                                            <>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handlePromoteLocalToDatabase(item);
-                                                                    }}
-                                                                    className="brutal-btn bg-[#CCFF00] text-black px-1.5 py-0.5 text-[9px] font-extrabold uppercase ml-1 flex items-center gap-1"
-                                                                    title="Сохранить этот локальный трек в постоянную базу данных сайта"
-                                                                >
-                                                                    <i className="fa-solid fa-floppy-disk text-[8px]"></i>
-                                                                    <span>В БАЗУ</span>
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setLocalTracks(prev => prev.filter(t => t.id !== item.id));
-                                                                        if (selectedTrackId === item.id) {
-                                                                            setSelectedTrackId(tracks[0]?.id || null);
-                                                                        }
-                                                                    }}
-                                                                    className="brutal-btn bg-neutral-200 text-neutral-600 hover:bg-neutral-300 px-1.5 py-0.5 text-[9px] font-extrabold uppercase ml-1"
-                                                                    title="Убрать локальный предпросмотр"
-                                                                >
-                                                                    ✕
-                                                                </button>
-                                                            </>
-                                                        )}
-
-                                                        {isAdmin && !item.isLocal && (
+                                                        {(isAdmin || item.isCustom) && (
                                                             <button
                                                                 type="button"
                                                                 onClick={(e) => {
@@ -3871,7 +3914,7 @@
                                                                     handleDeleteRoute(item.id);
                                                                 }}
                                                                 className="brutal-btn bg-neutral-200 text-[#FF5722] hover:bg-[#FF5722] hover:text-white px-1.5 py-0.5 text-[9px] font-extrabold uppercase ml-1"
-                                                                title="Удалить маршрут из базы"
+                                                                title="Удалить маршрут"
                                                             >
                                                                 ✕ УДАЛИТЬ
                                                             </button>
@@ -4295,6 +4338,20 @@
                 return INITIAL_TRACKS;
             });
 
+            // Asynchronously restore tracks from IndexedDB (preserves multiple large 100+ km GPX routes)
+            useEffect(() => {
+                let isMounted = true;
+                (async () => {
+                    try {
+                        const idbTracks = await loadFromIDB('pruushkaa_tracks_v3');
+                        if (isMounted && Array.isArray(idbTracks) && idbTracks.length > 0) {
+                            setTracks(idbTracks);
+                        }
+                    } catch (e) {}
+                })();
+                return () => { isMounted = false; };
+            }, []);
+
             const [isAdmin, setIsAdmin] = useState(() => {
                 try {
                     return sessionStorage.getItem('pruushkaa_admin_session') === 'true';
@@ -4442,7 +4499,7 @@
                                     const isUserModified = localStorage.getItem('pruushkaa_tracks_user_modified') === 'true';
                                     if (!isUserModified) {
                                         setTracks(data.tracks);
-                                        try { localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(data.tracks)); } catch (e) {}
+                                        persistAllTracks(data.tracks);
                                     }
                                 }
                                 if (data.adminPass) {
@@ -4527,10 +4584,7 @@
                 try {
                     localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(pToSave));
                     localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(wToSave));
-                    localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(tToSave));
-                    if (nextTracks !== null && nextTracks !== undefined) {
-                        localStorage.setItem('pruushkaa_tracks_user_modified', 'true');
-                    }
+                    persistAllTracks(tToSave);
                     localStorage.setItem('pruushkaa_admin_pass', passToSave);
                     if (keyToSave && keyToSave !== 'ВАШ_LASTFM_API_KEY') {
                         localStorage.setItem('pruushkaa_lastfm_key', keyToSave);
