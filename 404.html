@@ -212,6 +212,18 @@
             transform: scale(1.01);
             box-shadow: 6px 6px 0px 0px #000000;
         }
+        /* High-contrast Brutalist Dark Map (Zero watermarks, 100% free) */
+        .tiles-dark,
+        .leaflet-tile.tiles-dark,
+        .tiles-dark .leaflet-tile {
+            filter: invert(100%) hue-rotate(180deg) saturate(0.35) brightness(82%) contrast(120%) !important;
+        }
+        /* Crisp Clean Light Map */
+        .tiles-light,
+        .leaflet-tile.tiles-light,
+        .tiles-light .leaflet-tile {
+            filter: contrast(105%) !important;
+        }
     </style>
 </head>
 <body class="min-h-screen relative selection:bg-[#FF5722] selection:text-white">
@@ -2969,16 +2981,32 @@
                 });
             }, [allTracks, selectedCategory, searchQuery]);
 
-            // Tile URL: CartoDB Dark Matter vs Positron
+            // Tile configuration: 100% free, no API keys, zero watermarks
             const isDarkTiles = useMemo(() => {
                 if (tileMode === 'dark') return true;
                 if (tileMode === 'light') return false;
-                return darkMode;
-            }, [tileMode, darkMode]);
+                if (tileMode === 'satellite') return false;
+                return true; // Default to dark brutalist aesthetic
+            }, [tileMode]);
 
-            const tileUrl = isDarkTiles
-                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+            const currentTileConfig = useMemo(() => {
+                if (tileMode === 'satellite') {
+                    return {
+                        url: 'https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                        className: 'tiles-sat',
+                        maxZoom: 18,
+                        subdomains: '',
+                        attribution: '&copy; <a href="https://www.esri.com/">Esri</a>'
+                    };
+                }
+                return {
+                    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    className: isDarkTiles ? 'tiles-dark' : 'tiles-light',
+                    maxZoom: 19,
+                    subdomains: '',
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                };
+            }, [tileMode, isDarkTiles]);
 
             // 1. Initialize Map
             useEffect(() => {
@@ -2996,10 +3024,10 @@
 
                 L.control.zoom({ position: 'topright' }).addTo(map);
 
-                const tiles = L.tileLayer(tileUrl, {
-                    maxZoom: 19,
-                    subdomains: 'abcd',
-                    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                const tiles = L.tileLayer(currentTileConfig.url, {
+                    maxZoom: currentTileConfig.maxZoom,
+                    className: currentTileConfig.className,
+                    attribution: currentTileConfig.attribution
                 }).addTo(map);
 
                 const markers = L.layerGroup().addTo(map);
@@ -3018,12 +3046,20 @@
                 };
             }, []);
 
-            // 2. Dynamic Tile Switch on Theme change
+            // 2. Dynamic Tile Switch on Theme or Mode change
             useEffect(() => {
-                if (tileLayerRef.current) {
-                    tileLayerRef.current.setUrl(tileUrl);
+                if (!mapInstanceRef.current || !tileLayerRef.current) return;
+                mapInstanceRef.current.removeLayer(tileLayerRef.current);
+                const newTiles = L.tileLayer(currentTileConfig.url, {
+                    maxZoom: currentTileConfig.maxZoom,
+                    className: currentTileConfig.className,
+                    attribution: currentTileConfig.attribution
+                }).addTo(mapInstanceRef.current);
+                if (typeof newTiles.bringToBack === 'function') {
+                    newTiles.bringToBack();
                 }
-            }, [tileUrl]);
+                tileLayerRef.current = newTiles;
+            }, [currentTileConfig]);
 
             // 3. Render GPX Track Layer & Custom SVG Markers
             const renderTrack = useCallback((track) => {
@@ -3884,17 +3920,18 @@
                                             onClick={() => {
                                                 sfx.playClick();
                                                 setTileMode(prev => {
-                                                    if (prev === 'auto') return darkMode ? 'light' : 'dark';
-                                                    if (prev === 'dark') return 'light';
-                                                    return 'auto';
+                                                    if (prev === 'dark' || prev === 'auto') return 'light';
+                                                    if (prev === 'light') return 'satellite';
+                                                    if (prev === 'satellite') return 'dark';
+                                                    return 'dark';
                                                 });
                                             }}
                                             onMouseEnter={() => sfx.playHover()}
                                             className="brutal-btn bg-neutral-800 text-white px-2 py-1 font-bold text-[10px] uppercase flex items-center gap-1"
-                                            title="Переключить тему тайлов (Dark Matter / Positron)"
+                                            title="Переключить стиль карты: Dark Cyber / Light / Спутник"
                                         >
-                                            <i className="fa-solid fa-circle-half-stroke text-[#CCFF00]"></i>
-                                            <span>{isDarkTiles ? 'DARK TILES' : 'LIGHT TILES'}</span>
+                                            <i className="fa-solid fa-layer-group text-[#CCFF00]"></i>
+                                            <span>{tileMode === 'satellite' ? 'СПУТНИК' : (isDarkTiles ? 'DARK TILES' : 'LIGHT TILES')}</span>
                                         </button>
 
                                         <button
