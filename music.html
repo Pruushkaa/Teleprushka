@@ -1679,8 +1679,20 @@
             const [selectedDay, setSelectedDay] = useState(null);
 
             // Live Last.fm & Player State
-            const [lastFmApiKey, setLastFmApiKey] = useState(CONFIG.LASTFM_API_KEY || '');
-            const [lastFmUser, setLastFmUser] = useState(CONFIG.LASTFM_USER || 'Pruushkaa');
+            const [lastFmApiKey, setLastFmApiKey] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('pruushkaa_lastfm_key');
+                    if (saved && saved !== 'ВАШ_LASTFM_API_KEY' && saved.trim().length >= 16) return saved.trim();
+                } catch (e) {}
+                return CONFIG.LASTFM_API_KEY || '684b6a85757601272919018585e32a99';
+            });
+            const [lastFmUser, setLastFmUser] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('pruushkaa_lastfm_user');
+                    if (saved && saved.trim()) return saved.trim();
+                } catch (e) {}
+                return CONFIG.LASTFM_USER || 'Pruushkaa';
+            });
             const [liveTrack, setLiveTrack] = useState(null);
             const [liveStatus, setLiveStatus] = useState('OFFLINE'); // 'LIVE' | 'OFFLINE'
             const latestSeenDateRef = useRef(0);
