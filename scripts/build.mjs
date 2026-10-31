@@ -117,6 +117,14 @@ if (fs.existsSync(publicDir)) {
     if (fs.existsSync(tracksFile)) {
         fs.writeFileSync(path.join(publicDir, 'tracks.json'), fs.readFileSync(tracksFile, 'utf8'), 'utf8');
     }
+    const archiveCss = path.join(rootDir, 'archive.css');
+    if (fs.existsSync(archiveCss)) {
+        fs.copyFileSync(archiveCss, path.join(publicDir, 'archive.css'));
+    }
+    const configJs = path.join(rootDir, 'config.js');
+    if (fs.existsSync(configJs)) {
+        fs.copyFileSync(configJs, path.join(publicDir, 'config.js'));
+    }
     if (fs.existsSync(ogImagePath)) {
         fs.copyFileSync(ogImagePath, path.join(publicDir, 'og-image.png'));
         const ogSvg = path.join(rootDir, 'public', 'og-image.svg');

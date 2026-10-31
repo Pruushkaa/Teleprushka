@@ -9,10 +9,6 @@
     "build": "node scripts/sync-tracks.mjs && node scripts/generate-og.mjs && node scripts/build.mjs",
     "generate:samples": "node scripts/generate-sample-tracks.mjs"
   },
-  "dependencies": {
-    "leaflet": "^1.9.4",
-    "leaflet-gpx": "^1.7.0"
-  },
   "devDependencies": {
     "@babel/parser": "^7.26.9",
     "@resvg/resvg-js": "^2.6.2"

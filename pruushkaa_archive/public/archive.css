@@ -1,0 +1,227 @@
+/* ==========================================================================
+   PRUUSHKAA // ARCHIVE_OS — SHARED BRUTALIST DESIGN SYSTEM & STYLES
+   ==========================================================================
+   Unified design tokens, component classes, scrollbars, and keyframe animations
+   shared across index.html, music.html and standalone pages.
+   ========================================================================== */
+
+:root {
+    --bg-main: #F4F0EA;
+    --text-main: #111111;
+    --card-bg: #FFFFFF;
+    --accent-orange: #FF5722;
+    --accent-lime: #CCFF00;
+    --accent-cyan: #00E5FF;
+    --accent-violet: #B388FF;
+    --border-color: #000000;
+    --shadow-color: #000000;
+}
+
+body.theme-cyber {
+    --bg-main: #0D0E12;
+    --text-main: #F4F0EA;
+    --card-bg: #181A20;
+    --border-color: #000000;
+    --shadow-color: #000000;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
+    transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* ==========================================================================
+   1. BRUTALIST CARD COMPONENTS
+   ========================================================================== */
+.brutal-card {
+    background-color: var(--card-bg);
+    border: 3px solid var(--border-color);
+    box-shadow: 6px 6px 0px 0px var(--shadow-color);
+    transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.brutal-card-interactive {
+    cursor: pointer;
+}
+
+.brutal-card-interactive:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 8px 8px 0px 0px var(--shadow-color);
+}
+
+.brutal-card-interactive:active {
+    transform: translate(6px, 6px);
+    box-shadow: 0px 0px 0px 0px var(--shadow-color);
+}
+
+/* ==========================================================================
+   2. BRUTALIST BUTTONS
+   ========================================================================== */
+.brutal-btn {
+    border: 3px solid var(--border-color);
+    box-shadow: 4px 4px 0px 0px var(--shadow-color);
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.1s ease;
+    cursor: pointer;
+    user-select: none;
+}
+
+.brutal-btn:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0px 0px var(--shadow-color);
+}
+
+.brutal-btn:active {
+    transform: translate(4px, 4px);
+    box-shadow: 0px 0px 0px 0px var(--shadow-color);
+}
+
+/* ==========================================================================
+   3. CUSTOM SCROLLBARS
+   ========================================================================== */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: #F4F0EA;
+    border-left: 3px solid #000;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #FF5722;
+    border: 2px solid #000;
+}
+
+body.theme-cyber ::-webkit-scrollbar-track {
+    background: #181A20;
+    border-left: 3px solid #000;
+}
+
+/* ==========================================================================
+   4. KEYFRAME ANIMATIONS
+   ========================================================================== */
+@keyframes marquee {
+    0% { transform: translateX(0%); }
+    100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+    display: flex;
+    width: max-content;
+    animation: marquee 16s linear infinite;
+}
+
+.animate-marquee:hover {
+    animation-play-state: paused;
+}
+
+@keyframes eq-bounce {
+    0%, 100% { height: 20%; }
+    50% { height: 100%; }
+}
+
+@keyframes vinyl-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.spin-vinyl {
+    animation: vinyl-spin 4s linear infinite;
+}
+
+.spin-vinyl-paused {
+    animation: vinyl-spin 4s linear infinite;
+    animation-play-state: paused;
+}
+
+/* ==========================================================================
+   5. LEAFLET MAP BRUTALIST OVERRIDES
+   ========================================================================== */
+.leaflet-container {
+    font-family: 'Space Grotesk', sans-serif !important;
+    background-color: #0D0E12 !important;
+    border-radius: 0px !important;
+}
+
+.leaflet-bar {
+    border: 3px solid #000000 !important;
+    box-shadow: 4px 4px 0px 0px #000000 !important;
+    border-radius: 0px !important;
+    overflow: hidden;
+}
+
+.leaflet-bar a {
+    background-color: var(--card-bg) !important;
+    color: var(--text-main) !important;
+    border-bottom: 2px solid #000000 !important;
+    font-weight: 800 !important;
+    border-radius: 0px !important;
+    transition: all 0.1s ease;
+}
+
+.leaflet-bar a:hover {
+    background-color: #FF5722 !important;
+    color: #ffffff !important;
+}
+
+.leaflet-control-attribution {
+    background: rgba(0, 0, 0, 0.85) !important;
+    color: #d1d5db !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 10px !important;
+    border-top: 2px solid #000 !important;
+    border-left: 2px solid #000 !important;
+    padding: 3px 8px !important;
+}
+
+.leaflet-control-attribution a {
+    color: #CCFF00 !important;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.brutal-tooltip {
+    background-color: #000000 !important;
+    color: #CCFF00 !important;
+    border: 2px solid #000000 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    border-radius: 0px !important;
+    box-shadow: 3px 3px 0px #FF5722 !important;
+    padding: 4px 8px !important;
+}
+
+.brutal-tooltip::before {
+    display: none !important;
+}
+
+.gpx-dropzone {
+    border: 2px dashed #000000;
+    transition: all 0.15s ease-in-out;
+}
+
+.gpx-dropzone.drag-active {
+    background-color: #CCFF00 !important;
+    border-color: #FF5722 !important;
+    transform: scale(1.01);
+    box-shadow: 6px 6px 0px 0px #000000;
+}
+
+/* High-contrast Brutalist Dark Map (Zero watermarks, 100% free) */
+.tiles-dark,
+.leaflet-tile.tiles-dark,
+.tiles-dark .leaflet-tile {
+    filter: invert(100%) hue-rotate(180deg) saturate(0.35) brightness(82%) contrast(120%) !important;
+}
+
+/* Crisp Clean Light Map */
+.tiles-light,
+.leaflet-tile.tiles-light,
+.tiles-light .leaflet-tile {
+    filter: contrast(105%) !important;
+}
