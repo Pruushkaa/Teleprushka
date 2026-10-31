@@ -1,51 +1,130 @@
 [
   {
-    "id": "ride-2026-08-route3-night-city",
-    "title": "Ночной урбан-заезд",
-    "date": "2026-08-09",
-    "file": "public/tracks/route3-night-city.gpx",
-    "description": "Пустые ночные проспекты, мосты и кольцевые развязки",
+    "id": "ride-2026-07-20260709_085611",
+    "title": "Заезд 09.07.2026 (08:56)",
+    "date": "2026-07-09",
+    "file": "public/tracks/20260709_085611.gpx",
+    "description": "GPX трек: 20260709_085611.gpx",
     "tags": [
-      "urban",
-      "night"
+      "route",
+      "cycling"
     ],
     "telemetry": {
-      "distanceKm": 15.7,
-      "elevationGainM": 126,
-      "movingTime": "1ч 10м"
+      "distanceKm": 172.5,
+      "elevationGainM": 1047,
+      "movingTime": "12ч 31м"
     }
   },
   {
-    "id": "ride-2026-07-route2-river",
-    "title": "Набережная и дамба",
-    "date": "2026-07-22",
-    "file": "public/tracks/route2-river.gpx",
-    "description": "Скоростной асфальтовый заезд вдоль реки и набережных",
+    "id": "ride-2026-07-zelenoe_kolco",
+    "title": "Зеленое кольцо Москвы",
+    "date": "2026-07-09",
+    "file": "public/tracks/Zelenoe_kolco.gpx",
+    "description": "GPX трек: Zelenoe_kolco.gpx",
     "tags": [
-      "scenic",
-      "speed",
-      "asphalt"
+      "route",
+      "cycling"
     ],
     "telemetry": {
-      "distanceKm": 14.9,
-      "elevationGainM": 24,
-      "movingTime": "1ч 8м"
+      "distanceKm": 172.5,
+      "elevationGainM": 1047,
+      "movingTime": "12ч 31м"
     }
   },
   {
-    "id": "ride-2026-06-route1-forest",
-    "title": "Лесной маршрут",
-    "date": "2026-06-15",
-    "file": "public/tracks/route1-forest.gpx",
-    "description": "Грунты, лесные тропы и полевые участки вдоль бора",
+    "id": "ride-2026-06-20260610_114749",
+    "title": "Заезд 10.06.2026 (11:47)",
+    "date": "2026-06-10",
+    "file": "public/tracks/20260610_114749.gpx",
+    "description": "GPX трек: 20260610_114749.gpx",
     "tags": [
-      "forest",
-      "gravel"
+      "route",
+      "cycling"
     ],
     "telemetry": {
-      "distanceKm": 15.7,
-      "elevationGainM": 175,
-      "movingTime": "1ч 10м"
+      "distanceKm": 74.7,
+      "elevationGainM": 274,
+      "movingTime": "9ч 29м"
+    }
+  },
+  {
+    "id": "ride-2026-06-20260610_1147491",
+    "title": "Заезд 10.06.2026 (11:47) #1",
+    "date": "2026-06-10",
+    "file": "public/tracks/20260610_1147491.gpx",
+    "description": "GPX трек: 20260610_1147491.gpx",
+    "tags": [
+      "route",
+      "cycling"
+    ],
+    "telemetry": {
+      "distanceKm": 74.7,
+      "elevationGainM": 274,
+      "movingTime": "9ч 29м"
+    }
+  },
+  {
+    "id": "ride-2026-06-20260610_11474912",
+    "title": "Заезд 10.06.2026 (11:47) #12",
+    "date": "2026-06-10",
+    "file": "public/tracks/20260610_11474912.gpx",
+    "description": "GPX трек: 20260610_11474912.gpx",
+    "tags": [
+      "route",
+      "cycling"
+    ],
+    "telemetry": {
+      "distanceKm": 74.7,
+      "elevationGainM": 274,
+      "movingTime": "9ч 29м"
+    }
+  },
+  {
+    "id": "ride-2026-05-20260527_152105",
+    "title": "Заезд 27.05.2026 (15:21)",
+    "date": "2026-05-27",
+    "file": "public/tracks/20260527_152105.gpx",
+    "description": "GPX трек: 20260527_152105.gpx",
+    "tags": [
+      "route",
+      "cycling"
+    ],
+    "telemetry": {
+      "distanceKm": 23.6,
+      "elevationGainM": 120,
+      "movingTime": "2ч 26м"
+    }
+  },
+  {
+    "id": "ride-2026-05-20260524_115606",
+    "title": "Заезд 24.05.2026 (11:56)",
+    "date": "2026-05-24",
+    "file": "public/tracks/20260524_115606.gpx",
+    "description": "GPX трек: 20260524_115606.gpx",
+    "tags": [
+      "route",
+      "cycling"
+    ],
+    "telemetry": {
+      "distanceKm": 32.5,
+      "elevationGainM": 223,
+      "movingTime": "3ч 52м"
+    }
+  },
+  {
+    "id": "ride-2026-05-20260516_140433",
+    "title": "Заезд 16.05.2026 (14:04)",
+    "date": "2026-05-16",
+    "file": "public/tracks/20260516_140433.gpx",
+    "description": "GPX трек: 20260516_140433.gpx",
+    "tags": [
+      "route",
+      "cycling"
+    ],
+    "telemetry": {
+      "distanceKm": 31.3,
+      "elevationGainM": 114,
+      "movingTime": "7ч 34м"
     }
   }
 ]

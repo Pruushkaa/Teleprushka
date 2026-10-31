@@ -39,9 +39,21 @@ function extractTag(xml, tag) {
     return match ? match[1].trim() : null;
 }
 
-function humanizeName(fileName) {
-    const base = fileName.replace(/\.gpx$/i, '');
-    return base
+function humanizeName(rawName) {
+    if (!rawName) return 'Маршрут';
+    let clean = rawName.replace(/\.gpx$/i, '').trim();
+
+    if (/zelenoe[_-]?kolco/i.test(clean)) {
+        return 'Зеленое кольцо Москвы';
+    }
+
+    const tsMatch = clean.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})?(.*)$/);
+    if (tsMatch) {
+        const [, y, m, d, hh, mm, , suffix] = tsMatch;
+        return `Заезд ${d}.${m}.${y} (${hh}:${mm})${suffix ? ` #${suffix}` : ''}`;
+    }
+
+    return clean
         .replace(/[-_]+/g, ' ')
         .replace(/\b\w/g, (c) => c.toUpperCase())
         .trim();
@@ -56,10 +68,14 @@ function generateId(fileName, date) {
     return `ride-${base}`;
 }
 
-function deriveTags(title, desc, gpxType) {
+function deriveTags(title, desc, gpxType, telemetry) {
     const combined = `${title || ''} ${desc || ''} ${gpxType || ''}`.toLowerCase();
     const tags = new Set();
 
+    if (/зелен|кольц/i.test(combined)) {
+        tags.add('кольцо');
+        tags.add('scenic');
+    }
     if (/forest|лес|бор|древес/i.test(combined)) tags.add('forest');
     if (/gravel|гревел|грунт|гравий/i.test(combined)) tags.add('gravel');
     if (/off-?road|бездорож/i.test(combined)) tags.add('off-road');
@@ -68,6 +84,13 @@ function deriveTags(title, desc, gpxType) {
     if (/night|ноч/i.test(combined)) tags.add('night');
     if (/speed|скорост/i.test(combined)) tags.add('speed');
     if (/asphalt|асфальт|road/i.test(combined)) tags.add('asphalt');
+
+    if (telemetry && telemetry.distanceKm >= 100) {
+        tags.add('endurance');
+        tags.add('epic');
+    } else if (telemetry && telemetry.distanceKm >= 50) {
+        tags.add('long-ride');
+    }
 
     if (tags.size === 0) {
         tags.add('route');
@@ -230,8 +253,13 @@ function syncTracks() {
 
         if (existing) {
             // Preserve existing custom fields, update/attach telemetry if missing
+            let updatedTitle = existing.title || humanizeName(fileName);
+            if (updatedTitle.toLowerCase().endsWith('.gpx') || /^\d{8}_\d{6}/.test(updatedTitle) || /zelenoe/i.test(updatedTitle)) {
+                updatedTitle = humanizeName(updatedTitle);
+            }
             finalTracks.push({
                 ...existing,
+                title: updatedTitle,
                 file: `public/tracks/${fileName}`,
                 telemetry: existing.telemetry || telemetry
             });
@@ -255,9 +283,17 @@ function syncTracks() {
             dateStr = stats.mtime.toISOString().slice(0, 10);
         }
 
-        const title = nameInXml || humanizeName(fileName);
-        const description = descInXml || `GPX трек: ${title}`;
-        const tags = deriveTags(title, description, typeInXml);
+        let rawTitle = nameInXml || fileName;
+        if (rawTitle.toLowerCase().endsWith('.gpx')) {
+            rawTitle = rawTitle.replace(/\.gpx$/i, '');
+        }
+        const title = humanizeName(rawTitle);
+        const description = descInXml || (
+            telemetry
+                ? `Веломаршрут [${title}]. Дистанция: ${telemetry.distanceKm} км, набор высоты: +${telemetry.elevationGainM} м.`
+                : `GPX трек: ${title}`
+        );
+        const tags = deriveTags(title, description, typeInXml, telemetry);
         const id = generateId(fileName, dateStr);
 
         const newTrack = {
