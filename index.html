@@ -2318,6 +2318,15 @@
                 }
 
                 try {
+                    if (trimmedKey) {
+                        localStorage.setItem('pruushkaa_lastfm_key', trimmedKey);
+                    }
+                    if (trimmedUser) {
+                        localStorage.setItem('pruushkaa_lastfm_user', trimmedUser);
+                    }
+                    if (trimmedId) {
+                        localStorage.setItem('pruushkaa_discord_id', trimmedId);
+                    }
                     if (newPass.trim()) {
                         localStorage.setItem('pruushkaa_admin_pass', finalPass);
                         setNewPass('');
@@ -2609,8 +2618,27 @@
                 }
             });
 
-            const [lastFmApiKey, setLastFmApiKey] = useState(CONFIG.LASTFM_API_KEY || '');
-            const [lastFmUser, setLastFmUser] = useState(CONFIG.LASTFM_USER || 'Pruushkaa');
+            const [lastFmApiKey, setLastFmApiKey] = useState(() => {
+                if (CONFIG.LASTFM_API_KEY && CONFIG.LASTFM_API_KEY !== 'ВАШ_LASTFM_API_KEY') {
+                    return CONFIG.LASTFM_API_KEY;
+                }
+                try {
+                    const saved = localStorage.getItem('pruushkaa_lastfm_key');
+                    if (saved && saved !== 'ВАШ_LASTFM_API_KEY') return saved;
+                } catch (e) {}
+                return '';
+            });
+
+            const [lastFmUser, setLastFmUser] = useState(() => {
+                if (CONFIG.LASTFM_USER && CONFIG.LASTFM_USER !== 'pruushkaa') {
+                    return CONFIG.LASTFM_USER;
+                }
+                try {
+                    const saved = localStorage.getItem('pruushkaa_lastfm_user');
+                    if (saved) return saved;
+                } catch (e) {}
+                return CONFIG.LASTFM_USER || 'Pruushkaa';
+            });
             const [discordStatus, setDiscordStatus] = useState(CONFIG.DEFAULT_DISCORD_STATUS || 'offline');
             const [discordText, setDiscordText] = useState(CONFIG.DEFAULT_DISCORD_TEXT || 'Автономный режим');
             const [discordId, setDiscordId] = useState(CONFIG.DISCORD_USER_ID || '655742532772429834');
@@ -2729,6 +2757,12 @@
                     localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(pToSave));
                     localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(wToSave));
                     localStorage.setItem('pruushkaa_admin_pass', passToSave);
+                    if (keyToSave && keyToSave !== 'ВАШ_LASTFM_API_KEY') {
+                        localStorage.setItem('pruushkaa_lastfm_key', keyToSave);
+                    }
+                    if (userToSave) {
+                        localStorage.setItem('pruushkaa_lastfm_user', userToSave);
+                    }
                 } catch (e) {}
 
                 if (window.location.protocol === 'file:') {
