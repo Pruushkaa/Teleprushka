@@ -94,12 +94,21 @@ try {
     }
 }
 
-// 6. Mirror index.html to 404.html for GitHub Pages routing if needed
+// 6. Validate OpenGraph image
+const ogImagePath = path.join(rootDir, 'public', 'og-image.png');
+if (fs.existsSync(ogImagePath)) {
+    const ogSizeKb = (fs.statSync(ogImagePath).size / 1024).toFixed(1);
+    console.log(`[VALIDATION] public/og-image.png OK (${ogSizeKb} KB).`);
+} else {
+    console.warn('[WARN] public/og-image.png does not exist! Running build:og is recommended.');
+}
+
+// 7. Mirror index.html to 404.html for GitHub Pages routing if needed
 const fourOhFour = path.join(rootDir, '404.html');
 fs.writeFileSync(fourOhFour, indexContent, 'utf8');
 console.log('[BUILD] Synchronized 404.html with index.html for GitHub Pages SPA fallback.');
 
-// 7. Mirror files to pruushkaa_archive/public
+// 8. Mirror files to pruushkaa_archive/public
 const publicDir = path.join(rootDir, 'pruushkaa_archive', 'public');
 if (fs.existsSync(publicDir)) {
     fs.writeFileSync(path.join(publicDir, 'index.html'), indexContent, 'utf8');
@@ -107,6 +116,13 @@ if (fs.existsSync(publicDir)) {
     fs.writeFileSync(path.join(publicDir, 'music.html'), musicContent, 'utf8');
     if (fs.existsSync(tracksFile)) {
         fs.writeFileSync(path.join(publicDir, 'tracks.json'), fs.readFileSync(tracksFile, 'utf8'), 'utf8');
+    }
+    if (fs.existsSync(ogImagePath)) {
+        fs.copyFileSync(ogImagePath, path.join(publicDir, 'og-image.png'));
+        const ogSvg = path.join(rootDir, 'public', 'og-image.svg');
+        if (fs.existsSync(ogSvg)) {
+            fs.copyFileSync(ogSvg, path.join(publicDir, 'og-image.svg'));
+        }
     }
     
     // Mirror data folder
@@ -121,7 +137,7 @@ if (fs.existsSync(publicDir)) {
             fs.copyFileSync(path.join(sourceDataDir, f), path.join(targetDataDir, f));
         }
     }
-    console.log('[BUILD] Synchronized public/ distribution folder with music.html and data/.');
+    console.log('[BUILD] Synchronized public/ distribution folder with music.html, og-image.png and data/.');
 }
 
 console.log('--- BUILD COMPLETE (STATUS: OK) ---');
