@@ -9,7 +9,7 @@ window.APP_CONFIG = {
     // 1. Last.fm Live Scrobbler
     // Получить бесплатный API-ключ: https://www.last.fm/api/account/create
     LASTFM_USER: 'Pruushkaa',
-    LASTFM_API_KEY: 'ВАШ_LASTFM_API_KEY', // <-- Вставьте сюда ваш 32-значный ключ Last.fm (например, из https://www.last.fm/api/accounts)
+    LASTFM_API_KEY: '684b6a85757601272919018585e32a99',
     LASTFM_POLL_INTERVAL_MS: 15000,
 
     // 2. Discord Lanyard Live Status
