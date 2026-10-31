@@ -1426,7 +1426,7 @@
 
             const filteredPhotos = useMemo(() => {
                 if (selectedCategory === 'ВСЕ') return photos;
-                return photos.filter(p => p.category === selectedCategory);
+                return photos.filter(p => (p.category || 'ИРЛ / АРХИВ') === selectedCategory);
             }, [photos, selectedCategory]);
 
             const handleFileUpload = (e) => {
@@ -1462,6 +1462,7 @@
                     category: newCategory,
                     date: today,
                     src: newSrc.trim(),
+                    url: newSrc.trim(),
                     fallback: "https://placehold.co/600x600/121212/CCFF00?text=NEW+FRAME",
                     desc: newDesc.trim() || "Добавлено через терминал фотоархива."
                 };
@@ -1634,51 +1635,67 @@
                     )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
-                        {filteredPhotos.map((item) => (
-                            <div
-                                key={item.id}
-                                onClick={() => {
-                                    sfx.playClick();
-                                    setLightboxItem(item);
-                                }}
-                                onMouseEnter={() => sfx.playHover()}
-                                className="brutal-card brutal-card-interactive bg-[#F4F0EA] p-3 flex flex-col justify-between cursor-pointer group"
-                            >
-                                <div>
-                                    <div className="flex items-center justify-between font-mono text-[11px] font-bold mb-2">
-                                        <span className="bg-black text-white px-2 py-0.5">{item.id}</span>
-                                        <span className="bg-white border border-black px-2 py-0.5">{item.date}</span>
-                                    </div>
+                        {filteredPhotos.map((item, index) => {
+                            const photoSrc = item.src || item.url || '';
+                            const photoTitle = item.title || `КАДР // ${item.id || index + 1}`;
+                            const photoCategory = item.category || 'ИРЛ / АРХИВ';
+                            const photoDate = item.date || (item.createdAt ? new Date(Number(item.createdAt)).toISOString().slice(0, 7).replace('-', '.') : '2026.02');
+                            const photoDesc = item.desc || 'Архивный снимок из медиа-хранилища.';
 
-                                    <div className="w-full h-52 border-3 border-black bg-neutral-900 overflow-hidden mb-3 relative">
-                                        <img
-                                            src={item.src}
-                                            alt={item.title}
-                                            onError={(e) => {
-                                                e.target.onerror = null;
-                                                e.target.src = item.fallback || "https://placehold.co/600x600/FF5722/000000?text=PHOTO+ARCHIVE";
-                                            }}
-                                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                        />
-                                        <div className="absolute bottom-2 right-2 bg-[#CCFF00] text-black border-2 border-black px-2 py-0.5 font-mono text-[10px] font-extrabold uppercase">
-                                            {item.category}
+                            return (
+                                <div
+                                    key={item.id || index}
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setLightboxItem({
+                                            ...item,
+                                            src: photoSrc,
+                                            url: photoSrc,
+                                            title: photoTitle,
+                                            category: photoCategory,
+                                            date: photoDate,
+                                            desc: photoDesc
+                                        });
+                                    }}
+                                    onMouseEnter={() => sfx.playHover()}
+                                    className="brutal-card brutal-card-interactive bg-[#F4F0EA] p-3 flex flex-col justify-between cursor-pointer group"
+                                >
+                                    <div>
+                                        <div className="flex items-center justify-between font-mono text-[11px] font-bold mb-2">
+                                            <span className="bg-black text-white px-2 py-0.5">{item.id || `IMG-0${index + 1}`}</span>
+                                            <span className="bg-white border border-black px-2 py-0.5">{photoDate}</span>
                                         </div>
+
+                                        <div className="w-full h-52 border-3 border-black bg-neutral-900 overflow-hidden mb-3 relative">
+                                            <img
+                                                src={photoSrc}
+                                                alt={photoTitle}
+                                                onError={(e) => {
+                                                    e.target.onerror = null;
+                                                    e.target.src = item.fallback || "https://placehold.co/600x600/FF5722/000000?text=PHOTO+ARCHIVE";
+                                                }}
+                                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                            />
+                                            <div className="absolute bottom-2 right-2 bg-[#CCFF00] text-black border-2 border-black px-2 py-0.5 font-mono text-[10px] font-extrabold uppercase">
+                                                {photoCategory}
+                                            </div>
+                                        </div>
+
+                                        <h3 className="font-extrabold text-base uppercase tracking-tight truncate mb-1">
+                                            {photoTitle}
+                                        </h3>
+                                        <p className="font-mono text-xs text-neutral-700 line-clamp-2">
+                                            {photoDesc}
+                                        </p>
                                     </div>
 
-                                    <h3 className="font-extrabold text-base uppercase tracking-tight truncate mb-1">
-                                        {item.title}
-                                    </h3>
-                                    <p className="font-mono text-xs text-neutral-700 line-clamp-2">
-                                        {item.desc}
-                                    </p>
+                                    <div className="mt-3 pt-2 border-t-2 border-black flex items-center justify-between font-mono text-[11px] font-extrabold">
+                                        <span className="text-[#FF5722] group-hover:underline">ОТКРЫТЬ КАДР →</span>
+                                        <i className="fa-solid fa-expand"></i>
+                                    </div>
                                 </div>
-
-                                <div className="mt-3 pt-2 border-t-2 border-black flex items-center justify-between font-mono text-[11px] font-extrabold">
-                                    <span className="text-[#FF5722] group-hover:underline">ОТКРЫТЬ КАДР →</span>
-                                    <i className="fa-solid fa-expand"></i>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     {lightboxItem && (
@@ -1696,7 +1713,7 @@
                                             {lightboxItem.id}
                                         </span>
                                         <span className="font-extrabold text-sm sm:text-base uppercase">
-                                            {lightboxItem.title}
+                                            {lightboxItem.title || `КАДР // ${lightboxItem.id}`}
                                         </span>
                                     </div>
                                     <button
@@ -1709,8 +1726,8 @@
 
                                 <div className="w-full max-h-[60vh] border-3 border-black bg-neutral-950 overflow-hidden mb-4 flex items-center justify-center">
                                     <img
-                                        src={lightboxItem.src}
-                                        alt={lightboxItem.title}
+                                        src={lightboxItem.src || lightboxItem.url}
+                                        alt={lightboxItem.title || 'ARCHIVE'}
                                         onError={(e) => {
                                             e.target.onerror = null;
                                             e.target.src = lightboxItem.fallback || "https://placehold.co/800x600/FF5722/000000?text=ARCHIVE+IMAGE";
@@ -1721,11 +1738,11 @@
 
                                 <div className="bg-[#F4F0EA] border-2 border-black p-3 mb-4 text-xs space-y-1">
                                     <div className="flex flex-wrap gap-3 font-extrabold text-neutral-700">
-                                        <span>КАТЕГОРИЯ: {lightboxItem.category}</span>
+                                        <span>КАТЕГОРИЯ: {lightboxItem.category || 'ИРЛ / АРХИВ'}</span>
                                         <span>//</span>
-                                        <span>ДАТА: {lightboxItem.date}</span>
+                                        <span>ДАТА: {lightboxItem.date || '2026.02'}</span>
                                     </div>
-                                    <p className="text-black font-bold pt-1">{lightboxItem.desc}</p>
+                                    <p className="text-black font-bold pt-1">{lightboxItem.desc || 'Архивный снимок из медиа-хранилища.'}</p>
                                 </div>
 
                                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1742,8 +1759,8 @@
                                         </span>
                                     )}
                                     <a
-                                        href={lightboxItem.src}
-                                        download={lightboxItem.title}
+                                        href={lightboxItem.src || lightboxItem.url}
+                                        download={lightboxItem.title || `frame_${lightboxItem.id}`}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="brutal-btn bg-[#CCFF00] text-black px-4 py-1.5 text-xs font-extrabold uppercase"
@@ -2644,12 +2661,26 @@
             const [discordId, setDiscordId] = useState(CONFIG.DISCORD_USER_ID || '655742532772429834');
 
             const [photos, setPhotos] = useState(() => {
+                const normalizeList = (arr) => arr.map((p, idx) => ({
+                    id: p.id || `IMG-0${idx + 1}`,
+                    title: p.title || `КАДР // ${p.id || idx + 1}`,
+                    category: p.category || 'ИРЛ / АРХИВ',
+                    date: p.date || (p.createdAt ? new Date(Number(p.createdAt)).toISOString().slice(0, 7).replace('-', '.') : '2026.02'),
+                    src: p.src || p.url || '',
+                    url: p.url || p.src || '',
+                    fallback: p.fallback || "https://placehold.co/600x600/FF5722/000000?text=PHOTO+ARCHIVE",
+                    desc: p.desc || 'Архивный снимок из медиа-хранилища.'
+                }));
                 try {
                     const saved = localStorage.getItem('pruushkaa_photos_v2');
-                    return saved ? JSON.parse(saved) : INITIAL_PHOTOS;
-                } catch (e) {
-                    return INITIAL_PHOTOS;
-                }
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            return normalizeList(parsed);
+                        }
+                    }
+                } catch (e) {}
+                return normalizeList(INITIAL_PHOTOS);
             });
 
             const [wikiArticles, setWikiArticles] = useState(() => {
@@ -2687,8 +2718,19 @@
                             const data = await res.json();
                             if (data && isMounted) {
                                 if (Array.isArray(data.photos)) {
-                                    setPhotos(data.photos);
-                                    try { localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(data.photos)); } catch (e) {}
+                                    const normalizeList = (arr) => arr.map((p, idx) => ({
+                                        id: p.id || `IMG-0${idx + 1}`,
+                                        title: p.title || `КАДР // ${p.id || idx + 1}`,
+                                        category: p.category || 'ИРЛ / АРХИВ',
+                                        date: p.date || (p.createdAt ? new Date(Number(p.createdAt)).toISOString().slice(0, 7).replace('-', '.') : '2026.02'),
+                                        src: p.src || p.url || '',
+                                        url: p.url || p.src || '',
+                                        fallback: p.fallback || "https://placehold.co/600x600/FF5722/000000?text=PHOTO+ARCHIVE",
+                                        desc: p.desc || 'Архивный снимок из медиа-хранилища.'
+                                    }));
+                                    const normalized = normalizeList(data.photos);
+                                    setPhotos(normalized);
+                                    try { localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(normalized)); } catch (e) {}
                                 }
                                 const serverWiki = Array.isArray(data.wiki)
                                     ? data.wiki
