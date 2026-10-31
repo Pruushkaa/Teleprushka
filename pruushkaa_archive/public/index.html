@@ -20,6 +20,9 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 
+    <!-- Static Application Config (Teleprushka) -->
+    <script src="config.js"></script>
+
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -161,42 +164,28 @@
         const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
         /* ==========================================================================
-           PUBLIC LIVE WIDGETS CONFIGURATION (GITHUB PAGES COMPATIBLE)
-           ==========================================================================
-           Задайте ваши публичные идентификаторы для работы без собственного бэкенда.
-           Все посетители сайта будут опрашивать официальные публичные API напрямую.
+           STATIC CONFIGURATION (FROM WINDOW.APP_CONFIG / CONFIG.JS)
            ========================================================================== */
-        const ARCHIVE_CONFIG = {
-            // 1. Last.fm Live Scrobbler
-            // Профиль: https://www.last.fm/user/pruushkaa
-            // Получить бесплатный API-ключ: https://www.last.fm/api/account/create
-            LASTFM_USER: "pruushkaa",
-            LASTFM_API_KEY: "", // <--- Вставьте сюда 32-значный API ключ Last.fm (или в database.json)
+        const CONFIG = (typeof window !== 'undefined' && window.APP_CONFIG) ? window.APP_CONFIG : {
+            LASTFM_USER: 'Pruushkaa',
+            LASTFM_API_KEY: 'ВАШ_LASTFM_API_KEY',
             LASTFM_POLL_INTERVAL_MS: 15000,
-
-            // 2. Discord Lanyard Live Status
-            // Ваш Discord Snowflake ID (17-19 цифр): Настройки Discord -> Расширенные -> Режим разработчика -> ПКМ по профилю -> "Копировать ID пользователя"
-            // ВАЖНО: Вы должны состоять на сервере Lanyard: https://discord.gg/lanyard
-            DISCORD_USER_ID: "", // <--- Вставьте сюда ваш Discord ID (или в database.json)
-            DISCORD_TAG: "pruushkaa",
+            DISCORD_USER_ID: '655742532772429834',
+            DISCORD_TAG: 'pruushkaa',
             DISCORD_POLL_INTERVAL_MS: 15000,
-            DEFAULT_DISCORD_STATUS: "offline",
-            DEFAULT_DISCORD_TEXT: "Автономный режим",
-
-            // Совместимость с предыдущими именами переменных
-            DEFAULT_ADMIN_PASSWORD: "admin",
-            get DEFAULT_LASTFM_USER() { return this.LASTFM_USER; },
-            get DEFAULT_LASTFM_API_KEY() { return this.LASTFM_API_KEY; },
-            get DEFAULT_DISCORD_ID() { return this.DISCORD_USER_ID; },
-
+            DEFAULT_DISCORD_STATUS: 'offline',
+            DEFAULT_DISCORD_TEXT: 'Автономный режим',
+            DEFAULT_ADMIN_PASSWORD: 'admin',
             SOCIAL_LINKS: {
-                TELEGRAM_PERSONAL: "https://t.me/pruushkaa",
-                TELEGRAM_CHANNEL: "https://t.me/pruuushkaa",
-                STEAM: "https://steamcommunity.com/profiles/76561198905010186/",
-                TWITTER: "https://x.com/LeraSemen0va",
-                LASTFM: "https://www.last.fm/user/pruushkaa"
+                TELEGRAM_PERSONAL: 'https://t.me/pruushkaa',
+                TELEGRAM_CHANNEL: 'https://t.me/pruuushkaa',
+                STEAM: 'https://steamcommunity.com/profiles/76561198905010186/',
+                TWITTER: 'https://x.com/LeraSemen0va',
+                LASTFM: 'https://www.last.fm/user/pruushkaa'
             }
         };
+
+        const ARCHIVE_CONFIG = CONFIG;
 
         class SoundEngine {
             constructor() {
@@ -437,17 +426,24 @@
             const [errorMsg, setErrorMsg] = useState(null);
             const audioRef = useRef(null);
 
-            const cleanKey = (lastFmApiKey || ARCHIVE_CONFIG.LASTFM_API_KEY || '').trim();
-            const cleanUser = (lastFmUser || ARCHIVE_CONFIG.LASTFM_USER || 'pruushkaa').trim();
+            const isKeyConfigured = (key) => {
+                if (!key) return false;
+                const str = String(key).trim();
+                return str && str !== 'ВАШ_LASTFM_API_KEY' && str !== 'YOUR_API_KEY' && str.length >= 16;
+            };
+
+            const cleanKey = (lastFmApiKey || CONFIG.LASTFM_API_KEY || '').trim();
+            const cleanUser = (lastFmUser || CONFIG.LASTFM_USER || 'Pruushkaa').trim();
 
             const currentTrack = tracks[activeIdx] || tracks[0];
 
             useEffect(() => {
                 let isMounted = true;
 
-                if (!cleanKey) {
+                if (!isKeyConfigured(cleanKey)) {
+                    console.warn(`[Last.fm Widget] API-ключ Last.fm не настроен или содержит шаблонную заглушку ("${cleanKey || 'пусто'}"). Укажите валидный API-ключ в config.js (получить бесплатно: https://www.last.fm/api/account/create).`);
                     if (isMounted) {
-                        setApiStatus('STANDBY');
+                        setApiStatus('CONFIG_REQUIRED');
                     }
                     return;
                 }
@@ -618,61 +614,64 @@
                                         ? 'bg-[#CCFF00] text-black'
                                         : apiStatus === 'OFFLINE'
                                         ? 'bg-white text-black'
-                                        : apiStatus === 'STANDBY'
-                                        ? 'bg-[#FF5722] text-white'
+                                        : apiStatus === 'CONFIG_REQUIRED'
+                                        ? 'bg-amber-300 text-black'
                                         : 'bg-red-500 text-white'
                                 }`}
                                 title="Настроить API-ключ Last.fm"
                             >
                                 {apiStatus === 'LIVE'
                                     ? '● LAST.FM: LIVE'
+                                    : apiStatus === 'CONFIG_REQUIRED'
+                                    ? '⚙ Требуется настройка API'
                                     : apiStatus === 'OFFLINE'
                                     ? '■ LAST.FM: ПОСЛЕДНИЙ ТРЕК'
-                                    : apiStatus === 'STANDBY'
-                                    ? '⚙ НУЖЕН КЛЮЧ API'
                                     : '▲ ОШИБКА API'}
                             </button>
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <span className={`inline-flex items-center gap-1.5 font-mono text-[11px] font-bold px-2.5 py-0.5 border-2 border-black ${
-                                currentTrack.nowPlaying ? 'bg-[#CCFF00] text-black' : 'bg-white text-neutral-800'
-                            }`}>
-                                <span className={`w-2 h-2 rounded-full ${
-                                    currentTrack.nowPlaying ? 'bg-black animate-ping' : 'bg-neutral-500'
-                                }`}></span>
-                                {currentTrack.nowPlaying ? "СЕЙЧАС ИГРАЕТ // NOW PLAYING" : "ПОСЛЕДНИЙ ТРЕК // OFFLINE"}
-                            </span>
+                            {apiStatus === 'LIVE' ? (
+                                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold px-2.5 py-0.5 border-2 border-black bg-[#CCFF00] text-black">
+                                    <span className="w-2 h-2 rounded-full bg-black animate-ping"></span>
+                                    СЕЙЧАС ИГРАЕТ // NOW PLAYING
+                                </span>
+                            ) : apiStatus === 'CONFIG_REQUIRED' ? (
+                                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold px-2.5 py-0.5 border-2 border-black bg-amber-300 text-black">
+                                    <span className="w-2 h-2 rounded-full bg-amber-600"></span>
+                                    Требуется настройка API
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold px-2.5 py-0.5 border-2 border-black bg-white text-neutral-800">
+                                    <span className="w-2 h-2 rounded-full bg-neutral-500"></span>
+                                    ПОСЛЕДНИЙ ТРЕК // OFFLINE
+                                </span>
+                            )}
                         </div>
                     </div>
 
                     {/* Standby Banner if no API key */}
-                    {apiStatus === 'STANDBY' && (
-                        <div className="bg-[#FF5722] text-white border-2 border-black p-3 mb-4 font-mono text-xs shadow-[3px_3px_0px_#000]">
+                    {apiStatus === 'CONFIG_REQUIRED' && (
+                        <div className="bg-amber-100 text-black border-2 border-black p-3 mb-4 font-mono text-xs shadow-[3px_3px_0px_#000]">
                             <div className="flex items-center gap-2 mb-1">
-                                <i className="fa-solid fa-triangle-exclamation text-yellow-300"></i>
-                                <span className="font-extrabold uppercase">API-КЛЮЧ LAST.FM НЕ НАСТРОЕН</span>
+                                <i className="fa-solid fa-triangle-exclamation text-amber-600 text-sm"></i>
+                                <span className="font-extrabold uppercase">ТРЕБУЕТСЯ НАСТРОЙКА API LAST.FM</span>
                             </div>
-                            <p className="text-[11px] font-normal leading-relaxed text-neutral-100">
-                                Для живого отслеживания треков укажите ключ в <code>ARCHIVE_CONFIG.LASTFM_API_KEY</code> или в <code>database.json</code>.
+                            <p className="text-[11px] font-medium leading-relaxed text-neutral-800">
+                                Для живого отслеживания треков укажите ваш 32-значный API-ключ в файле <code>config.js</code> в поле <code>LASTFM_API_KEY</code>.
                             </p>
-                            <div className="mt-2.5 flex flex-wrap gap-2">
+                            <div className="mt-2.5 flex flex-wrap items-center gap-2">
                                 <a
                                     href="https://www.last.fm/api/account/create"
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="bg-black text-[#CCFF00] px-2.5 py-1 text-[10px] uppercase font-extrabold border border-black hover:bg-white hover:text-black inline-flex items-center gap-1"
+                                    className="bg-black text-[#CCFF00] px-2.5 py-1 text-[10px] uppercase font-extrabold border border-black hover:bg-[#FF5722] hover:text-white inline-flex items-center gap-1"
                                 >
                                     <i className="fa-solid fa-key"></i> Получить ключ бесплатно
                                 </a>
-                                {isAdmin && (
-                                    <button
-                                        onClick={onOpenAdmin}
-                                        className="bg-white text-black px-2.5 py-1 text-[10px] uppercase font-extrabold border border-black hover:bg-[#CCFF00]"
-                                    >
-                                        Ввести в настройках сайта
-                                    </button>
-                                )}
+                                <span className="text-[10px] font-bold text-neutral-600">
+                                    (Файл конфигурации: <code>config.js</code>)
+                                </span>
                             </div>
                         </div>
                     )}
@@ -842,14 +841,14 @@
 
         const DiscordWidget = ({ discordId, discordTag, isAdmin, onOpenAdmin, notify }) => {
             const [status, setStatus] = useState('offline');
-            const [customText, setCustomText] = useState(ARCHIVE_CONFIG.DEFAULT_DISCORD_TEXT || 'Автономный режим');
+            const [customText, setCustomText] = useState(CONFIG.DEFAULT_DISCORD_TEXT || 'Автономный режим');
             const [activity, setActivity] = useState(null);
             const [spotify, setSpotify] = useState(null);
             const [avatarUrl, setAvatarUrl] = useState(null);
             const [isLive, setIsLive] = useState(false);
             const [copied, setCopied] = useState(false);
 
-            const cleanId = (discordId || ARCHIVE_CONFIG.DISCORD_USER_ID || '').trim();
+            const cleanId = (discordId || CONFIG.DISCORD_USER_ID || '655742532772429834').trim();
 
             useEffect(() => {
                 let isMounted = true;
@@ -2319,11 +2318,6 @@
                 }
 
                 try {
-                    localStorage.setItem('pruushkaa_lastfm_key', trimmedKey);
-                    localStorage.setItem('pruushkaa_lastfm_user', trimmedUser);
-                    localStorage.setItem('pruushkaa_discord_status', statusDraft);
-                    localStorage.setItem('pruushkaa_discord_text', trimmedText);
-                    localStorage.setItem('pruushkaa_discord_id', trimmedId);
                     if (newPass.trim()) {
                         localStorage.setItem('pruushkaa_admin_pass', finalPass);
                         setNewPass('');
@@ -2615,11 +2609,11 @@
                 }
             });
 
-            const [lastFmApiKey, setLastFmApiKey] = useState(ARCHIVE_CONFIG.LASTFM_API_KEY || '');
-            const [lastFmUser, setLastFmUser] = useState(ARCHIVE_CONFIG.LASTFM_USER || 'pruushkaa');
-            const [discordStatus, setDiscordStatus] = useState(ARCHIVE_CONFIG.DEFAULT_DISCORD_STATUS || 'offline');
-            const [discordText, setDiscordText] = useState(ARCHIVE_CONFIG.DEFAULT_DISCORD_TEXT || 'Автономный режим');
-            const [discordId, setDiscordId] = useState(ARCHIVE_CONFIG.DISCORD_USER_ID || '');
+            const [lastFmApiKey, setLastFmApiKey] = useState(CONFIG.LASTFM_API_KEY || '');
+            const [lastFmUser, setLastFmUser] = useState(CONFIG.LASTFM_USER || 'Pruushkaa');
+            const [discordStatus, setDiscordStatus] = useState(CONFIG.DEFAULT_DISCORD_STATUS || 'offline');
+            const [discordText, setDiscordText] = useState(CONFIG.DEFAULT_DISCORD_TEXT || 'Автономный режим');
+            const [discordId, setDiscordId] = useState(CONFIG.DISCORD_USER_ID || '655742532772429834');
 
             const [photos, setPhotos] = useState(() => {
                 try {
@@ -2735,11 +2729,6 @@
                     localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(pToSave));
                     localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(wToSave));
                     localStorage.setItem('pruushkaa_admin_pass', passToSave);
-                    localStorage.setItem('pruushkaa_lastfm_key', keyToSave);
-                    localStorage.setItem('pruushkaa_lastfm_user', userToSave);
-                    localStorage.setItem('pruushkaa_discord_status', discObj.status);
-                    localStorage.setItem('pruushkaa_discord_text', discObj.text);
-                    localStorage.setItem('pruushkaa_discord_id', discObj.discordId || discObj.id || '');
                 } catch (e) {}
 
                 if (window.location.protocol === 'file:') {
