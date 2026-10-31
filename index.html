@@ -23,6 +23,9 @@
     <!-- Static Application Config (Teleprushka) -->
     <script src="config.js"></script>
 
+    <!-- Marked Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -1839,12 +1842,188 @@
             }
         ];
 
+        function renderWikiMarkdown(content) {
+            if (!content) return '';
+
+            const formatInline = (str) => {
+                if (!str) return '';
+                return str
+                    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-black text-black bg-neutral-100 px-0.5">$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
+                    .replace(/`([^`]+)`/g, '<code class="bg-black text-[#CCFF00] px-1 py-0.5 text-xs font-mono">$1</code>')
+                    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer" class="text-[#FF5722] underline font-extrabold hover:text-black">$1</a>');
+            };
+
+            const rawLines = content.replace(/\r\n/g, '\n').split('\n');
+            const htmlParts = [];
+            let inList = false;
+            let listType = 'ul';
+
+            for (let i = 0; i < rawLines.length; i++) {
+                const line = rawLines[i];
+                const trimmed = line.trim();
+
+                // 1. Image check: ![alt](url)
+                const imgMatch = trimmed.match(/^!\[(.*?)\]\((.*?)\)$/);
+                if (imgMatch) {
+                    if (inList) { htmlParts.push(`</${listType}>`); inList = false; }
+                    const alt = (imgMatch[1] || 'Иллюстрация архива СРП').trim();
+                    const src = imgMatch[2].trim();
+                    htmlParts.push(`
+                        <div class="my-5 p-2.5 bg-[#F4F0EA] border-3 border-black shadow-[4px_4px_0px_#000]">
+                            <div class="overflow-hidden bg-neutral-950 flex items-center justify-center border-2 border-black max-h-[520px]">
+                                <img 
+                                    src="${src}" 
+                                    alt="${alt}" 
+                                    class="w-full max-h-[500px] object-contain hover:scale-[1.01] transition-transform cursor-pointer"
+                                    loading="lazy"
+                                />
+                            </div>
+                            <div class="mt-2 flex items-center justify-between font-mono text-[11px] font-bold text-neutral-700 px-1">
+                                <span>▲ ${alt}</span>
+                                <span class="text-[10px] text-[#FF5722] uppercase font-extrabold">КЛИК ДЛЯ УВЕЛИЧЕНИЯ ⤢</span>
+                            </div>
+                        </div>
+                    `);
+                    continue;
+                }
+
+                // 2. Heading: # Heading or **# Heading** or ## Heading
+                const headingMatch = trimmed.match(/^(?:\*\*)?(#{1,4})\s+(.*?)(?:\*\*)?$/);
+                if (headingMatch) {
+                    if (inList) { htmlParts.push(`</${listType}>`); inList = false; }
+                    const level = headingMatch[1].length;
+                    const hText = headingMatch[2].replace(/^\*+|\*+$/g, '').trim();
+                    if (level === 1) {
+                        htmlParts.push(`
+                            <h1 class="text-xl sm:text-2xl font-black uppercase tracking-tight mt-6 mb-3 pb-2 border-b-3 border-black flex items-center gap-2">
+                                <span class="w-3 h-3 bg-[#FF5722] border-2 border-black inline-block shrink-0"></span>
+                                <span>${hText}</span>
+                            </h1>
+                        `);
+                    } else if (level === 2) {
+                        htmlParts.push(`
+                            <h2 class="text-lg sm:text-xl font-black uppercase tracking-tight mt-5 mb-2.5 pb-1 border-b-2 border-black text-[#FF5722] flex items-center gap-2">
+                                <span>// ${hText}</span>
+                            </h2>
+                        `);
+                    } else {
+                        htmlParts.push(`
+                            <h3 class="text-base sm:text-lg font-extrabold uppercase mt-4 mb-2 text-black">
+                                ${hText}
+                            </h3>
+                        `);
+                    }
+                    continue;
+                }
+
+                // 3. Unordered list: - item or * item or • item
+                const ulMatch = trimmed.match(/^[-*•]\s+(.*)$/);
+                if (ulMatch) {
+                    if (!inList || listType !== 'ul') {
+                        if (inList) htmlParts.push(`</${listType}>`);
+                        htmlParts.push('<ul class="list-disc list-inside space-y-1.5 my-3 font-mono text-xs sm:text-sm pl-2">');
+                        inList = true;
+                        listType = 'ul';
+                    }
+                    let itemText = formatInline(ulMatch[1]);
+                    htmlParts.push(`<li class="leading-relaxed font-bold text-neutral-800">${itemText}</li>`);
+                    continue;
+                }
+
+                // 4. Ordered list: 1. item
+                const olMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+                if (olMatch) {
+                    if (!inList || listType !== 'ol') {
+                        if (inList) htmlParts.push(`</${listType}>`);
+                        htmlParts.push('<ol class="list-decimal list-inside space-y-1.5 my-3 font-mono text-xs sm:text-sm pl-2 font-bold">');
+                        inList = true;
+                        listType = 'ol';
+                    }
+                    let itemText = formatInline(olMatch[2]);
+                    htmlParts.push(`<li class="leading-relaxed font-bold text-neutral-800">${itemText}</li>`);
+                    continue;
+                }
+
+                if (inList) {
+                    htmlParts.push(`</${listType}>`);
+                    inList = false;
+                }
+
+                // 5. Empty line
+                if (!trimmed) {
+                    htmlParts.push('<div class="h-2"></div>');
+                    continue;
+                }
+
+                // 6. Blockquote: > text
+                if (trimmed.startsWith('>')) {
+                    const qText = formatInline(trimmed.replace(/^>\s*/, ''));
+                    htmlParts.push(`
+                        <blockquote class="border-l-4 border-[#FF5722] bg-[#F4F0EA] p-3 my-3 font-mono text-xs italic font-bold">
+                            ${qText}
+                        </blockquote>
+                    `);
+                    continue;
+                }
+
+                // 7. Check for inline image if inside text
+                if (trimmed.includes('![') && trimmed.includes('](')) {
+                    let replacedLine = trimmed.replace(/!\[(.*?)\]\((.*?)\)/g, (m, alt, src) => {
+                        return `<div class="my-4 p-2.5 bg-[#F4F0EA] border-3 border-black shadow-[4px_4px_0px_#000]"><div class="overflow-hidden bg-neutral-950 flex items-center justify-center border-2 border-black max-h-[520px]"><img src="${src}" alt="${alt || 'Иллюстрация'}" class="w-full max-h-[500px] object-contain cursor-pointer" loading="lazy" /></div><div class="mt-2 text-center font-mono text-[11px] font-bold text-neutral-700">▲ ${alt || 'Иллюстрация'}</div></div>`;
+                    });
+                    htmlParts.push(`<div class="mb-2 leading-relaxed text-neutral-800 font-mono text-xs sm:text-sm">${replacedLine}</div>`);
+                    continue;
+                }
+
+                // 8. Subheading check (short lines like "Краткая информация", "Формирование коалиции")
+                const isSubheading = trimmed.length < 50 && 
+                    !/[.,;!?]$/.test(trimmed) && 
+                    !trimmed.includes('http') && 
+                    !trimmed.startsWith('(') &&
+                    !trimmed.includes(':') &&
+                    !trimmed.startsWith('<');
+
+                if (isSubheading) {
+                    htmlParts.push(`
+                        <div class="font-extrabold uppercase text-sm sm:text-base mt-4 mb-1.5 text-black font-mono flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 bg-[#CCFF00] border border-black inline-block shrink-0"></span>
+                            <span>${formatInline(trimmed)}</span>
+                        </div>
+                    `);
+                    continue;
+                }
+
+                // 9. Key: Value or normal paragraph
+                let pText = formatInline(trimmed);
+                const colonIdx = pText.indexOf(':');
+                if (colonIdx > 0 && colonIdx < 40 && !pText.startsWith('<') && !pText.includes('http:')) {
+                    const keyPart = pText.substring(0, colonIdx);
+                    const valPart = pText.substring(colonIdx + 1);
+                    pText = `<strong class="text-black font-extrabold">${keyPart}:</strong><span class="text-neutral-800 font-bold">${valPart}</span>`;
+                }
+
+                htmlParts.push(`
+                    <p class="mb-2 leading-relaxed text-neutral-800 font-mono text-xs sm:text-sm">
+                        ${pText}
+                    </p>
+                `);
+            }
+
+            if (inList) {
+                htmlParts.push(`</${listType}>`);
+            }
+
+            return htmlParts.join('\n');
+        }
+
         const SrpWiki = ({ articles, setArticles, notify, syncDatabase, isAdmin, onOpenAdmin }) => {
-            const [selectedId, setSelectedId] = useState(articles[0]?.id || "SRP-01");
+            const [selectedId, setSelectedId] = useState(articles[0]?.id || "1786828017402");
             const [searchQuery, setSearchQuery] = useState('');
             const [activeCat, setActiveCat] = useState('ВСЕ');
             const [isEditing, setIsEditing] = useState(false);
             const [isCreating, setIsCreating] = useState(false);
+            const [wikiModalImg, setWikiModalImg] = useState(null);
 
             const [formTitle, setFormTitle] = useState('');
             const [formCategory, setFormCategory] = useState('ОСНОВНОЕ');
@@ -1855,11 +2034,12 @@
 
             const filteredArticles = useMemo(() => {
                 return articles.filter(art => {
-                    const matchesCat = activeCat === 'ВСЕ' || art.category === activeCat;
+                    const artCat = art.category || 'ОСНОВНОЕ';
+                    const matchesCat = activeCat === 'ВСЕ' || artCat === activeCat;
                     const q = searchQuery.toLowerCase();
                     const matchesQuery =
-                        art.title.toLowerCase().includes(q) ||
-                        art.content.toLowerCase().includes(q) ||
+                        (art.title || '').toLowerCase().includes(q) ||
+                        (art.content || '').toLowerCase().includes(q) ||
                         (art.tags || []).some(t => t.toLowerCase().includes(q));
                     return matchesCat && matchesQuery;
                 });
@@ -2178,7 +2358,7 @@
                                                 </span>
                                             </div>
                                             <div className="text-neutral-600 font-bold text-[11px]">
-                                                UPD: {currentArticle.updated} // BY @{currentArticle.author || 'pruushkaa'}
+                                                UPD: {currentArticle.updated || '2026.02'} // BY @{currentArticle.author || 'pruushkaa'}
                                             </div>
                                         </div>
 
@@ -2186,9 +2366,20 @@
                                             {currentArticle.title}
                                         </h3>
 
-                                        <div className="bg-white border-2 border-black p-4 font-mono text-xs sm:text-sm leading-relaxed whitespace-pre-line mb-4">
-                                            {currentArticle.content}
-                                        </div>
+                                        <div 
+                                            onClick={(e) => {
+                                                const img = e.target.closest('img');
+                                                if (img && img.src) {
+                                                    sfx.playClick();
+                                                    setWikiModalImg({
+                                                        src: img.src,
+                                                        alt: img.alt || 'Иллюстрация архива'
+                                                    });
+                                                }
+                                            }}
+                                            className="bg-white border-2 border-black p-4 sm:p-6 font-mono text-xs sm:text-sm leading-relaxed mb-4 overflow-x-hidden"
+                                            dangerouslySetInnerHTML={{ __html: renderWikiMarkdown(currentArticle.content) }}
+                                        />
                                     </div>
 
                                     <div className="pt-3 border-t-2 border-black flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
@@ -2237,6 +2428,58 @@
                             ) : null}
                         </div>
                     </div>
+
+                    {wikiModalImg && (
+                        <div
+                            className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 font-mono"
+                            onClick={() => setWikiModalImg(null)}
+                        >
+                            <div
+                                className="bg-white text-black border-4 border-black shadow-[12px_12px_0px_#CCFF00] max-w-4xl w-full p-4 sm:p-6"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="flex items-center justify-between border-b-2 border-black pb-3 mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <span className="bg-black text-[#CCFF00] px-2 py-0.5 text-xs font-extrabold">
+                                            WIKI_MEDIA // ИЛЛЮСТРАЦИЯ
+                                        </span>
+                                        <span className="font-extrabold text-sm uppercase truncate max-w-md">
+                                            {wikiModalImg.alt}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => setWikiModalImg(null)}
+                                        className="brutal-btn bg-[#FF5722] text-white px-2.5 py-1 text-xs font-extrabold"
+                                    >
+                                        ESC [X]
+                                    </button>
+                                </div>
+
+                                <div className="w-full max-h-[70vh] border-3 border-black bg-neutral-950 overflow-hidden mb-4 flex items-center justify-center">
+                                    <img
+                                        src={wikiModalImg.src}
+                                        alt={wikiModalImg.alt}
+                                        className="max-h-[68vh] w-auto object-contain"
+                                    />
+                                </div>
+
+                                <div className="flex flex-wrap justify-between items-center gap-2">
+                                    <span className="text-xs font-bold text-neutral-600">
+                                        {currentArticle?.title} // {currentArticle?.id}
+                                    </span>
+                                    <a
+                                        href={wikiModalImg.src}
+                                        download={`wiki_${currentArticle?.id || 'media'}.jpg`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="brutal-btn bg-[#CCFF00] text-black px-4 py-1.5 text-xs font-extrabold uppercase flex items-center gap-1.5"
+                                    >
+                                        <i className="fa-solid fa-download"></i> СКАЧАТЬ ОРИГИНАЛ
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </section>
             );
         };
@@ -2617,7 +2860,7 @@
             const [cmdOpen, setCmdOpen] = useState(false);
             const [adminModalOpen, setAdminModalOpen] = useState(false);
             const [visitorCount, setVisitorCount] = useState(1428);
-            const [activeSection, setActiveSection] = useState('ALL');
+            const [activeSection, setActiveSection] = useState('HOME');
 
             const [isAdmin, setIsAdmin] = useState(() => {
                 try {
@@ -2684,12 +2927,25 @@
             });
 
             const [wikiArticles, setWikiArticles] = useState(() => {
+                const normalizeWiki = (arr) => arr.map((a, idx) => ({
+                    id: a.id || `SRP-0${idx + 1}`,
+                    title: a.title || `СТАТЬЯ // ${a.id || idx + 1}`,
+                    category: a.category || (idx === 0 ? 'ОСНОВНОЕ' : 'ИСТОРИЯ / ЛОР'),
+                    updated: a.updated || '2026.02',
+                    author: a.author || 'pruushkaa',
+                    tags: Array.isArray(a.tags) ? a.tags : ['СРП', 'архив'],
+                    content: a.content || ''
+                }));
                 try {
                     const saved = localStorage.getItem('pruushkaa_wiki_v2');
-                    return saved ? JSON.parse(saved) : INITIAL_WIKI_ARTICLES;
-                } catch (e) {
-                    return INITIAL_WIKI_ARTICLES;
-                }
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            return normalizeWiki(parsed);
+                        }
+                    }
+                } catch (e) {}
+                return normalizeWiki(INITIAL_WIKI_ARTICLES);
             });
 
             const discordTag = "pruushkaa";
@@ -2736,8 +2992,18 @@
                                     ? data.wiki
                                     : (Array.isArray(data.articles) ? data.articles : null);
                                 if (serverWiki) {
-                                    setWikiArticles(serverWiki);
-                                    try { localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(serverWiki)); } catch (e) {}
+                                    const normalizeWiki = (arr) => arr.map((a, idx) => ({
+                                        id: a.id || `SRP-0${idx + 1}`,
+                                        title: a.title || `СТАТЬЯ // ${a.id || idx + 1}`,
+                                        category: a.category || (idx === 0 ? 'ОСНОВНОЕ' : 'ИСТОРИЯ / ЛОР'),
+                                        updated: a.updated || '2026.02',
+                                        author: a.author || 'pruushkaa',
+                                        tags: Array.isArray(a.tags) ? a.tags : ['СРП', 'архив'],
+                                        content: a.content || ''
+                                    }));
+                                    const normalizedW = normalizeWiki(serverWiki);
+                                    setWikiArticles(normalizedW);
+                                    try { localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(normalizedW)); } catch (e) {}
                                 }
                                 if (data.adminPass) {
                                     setAdminPass(data.adminPass);
@@ -3094,7 +3360,7 @@
                     <nav className="brutal-card p-2.5 mb-6 bg-white text-black flex flex-wrap items-center justify-between gap-2 font-mono text-xs">
                         <div className="flex flex-wrap items-center gap-2">
                             {[
-                                { id: 'ALL', label: 'ВСЕ БЛОКИ', icon: 'fa-layer-group' },
+                                { id: 'HOME', label: 'ГЛАВНАЯ // МУЗЫКА И СОЦСЕТИ', icon: 'fa-compact-disc' },
                                 { id: 'PHOTOS', label: `ФОТОАРХИВ (${photos.length})`, icon: 'fa-camera-retro' },
                                 { id: 'WIKI', label: `ВИКИ СРП (${wikiArticles.length})`, icon: 'fa-book-journal-whills' },
                                 { id: 'TOOLS', label: 'ТЕРМИНАЛ УТИЛИТ', icon: 'fa-screwdriver-wrench' }
@@ -3108,7 +3374,7 @@
                                     }}
                                     onMouseEnter={() => sfx.playHover()}
                                     className={`brutal-btn px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5 ${
-                                        activeSection === tab.id ? 'bg-[#FF5722] text-white' : 'bg-[#F4F0EA] text-black'
+                                        activeSection === tab.id ? 'bg-[#FF5722] text-white shadow-[3px_3px_0px_#000]' : 'bg-[#F4F0EA] text-black'
                                     }`}
                                 >
                                     <i className={`fa-solid ${tab.icon}`}></i>
@@ -3145,109 +3411,211 @@
                         </button>
                     </nav>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
-                        <div className="lg:col-span-8 brutal-card p-6 bg-white text-black relative flex flex-col justify-between">
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 mb-5">
-                                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-none border-4 border-black shadow-[5px_5px_0px_#FF5722] overflow-hidden shrink-0 bg-neutral-900">
-                                    <img
-                                        src="image_718c24.jpg"
-                                        alt="Pruushkaa Avatar"
-                                        onError={(e) => {
-                                            e.target.onerror = null;
-                                            e.target.src = "https://placehold.co/300x300/121212/CCFF00?text=PRUUSHKAA";
-                                        }}
-                                        className="w-full h-full object-cover"
-                                    />
-                                </div>
+                    {activeSection === 'HOME' && (
+                        <>
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+                                <div className="lg:col-span-8 brutal-card p-6 bg-white text-black relative flex flex-col justify-between">
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 mb-5">
+                                        <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-none border-4 border-black shadow-[5px_5px_0px_#FF5722] overflow-hidden shrink-0 bg-neutral-900">
+                                            <img
+                                                src="image_718c24.jpg"
+                                                alt="Pruushkaa Avatar"
+                                                onError={(e) => {
+                                                    e.target.onerror = null;
+                                                    e.target.src = "https://placehold.co/300x300/121212/CCFF00?text=PRUUSHKAA";
+                                                }}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
 
-                                <div>
-                                    <div className="inline-block font-mono text-xs font-extrabold uppercase bg-[#FF5722] text-white px-2.5 py-0.5 border-2 border-black mb-2">
-                                        DIGITAL ARCHIVE // DEVELOPER
+                                        <div>
+                                            <div className="inline-block font-mono text-xs font-extrabold uppercase bg-[#FF5722] text-white px-2.5 py-0.5 border-2 border-black mb-2">
+                                                DIGITAL ARCHIVE // DEVELOPER
+                                            </div>
+                                            <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-none mb-2">
+                                                PRUUSHKAA
+                                            </h1>
+                                            <p className="font-mono text-xs sm:text-sm text-neutral-700 font-bold max-w-xl">
+                                                Личный цифровой архив, фотохроника, база знаний Вики СРП и живая музыкальная телеметрия.
+                                            </p>
+                                        </div>
                                     </div>
-                                    <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-none mb-2">
-                                        PRUUSHKAA
-                                    </h1>
-                                    <p className="font-mono text-xs sm:text-sm text-neutral-700 font-bold max-w-xl">
-                                        Личный цифровой архив, фотохроника, база знаний Вики СРП и живая музыкальная телеметрия.
-                                    </p>
+
+                                    <div className="pt-4 border-t-2 border-black grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 font-mono text-xs">
+                                        <a
+                                            href={ARCHIVE_CONFIG.SOCIAL_LINKS.TELEGRAM_PERSONAL}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onMouseEnter={() => sfx.playHover()}
+                                            onClick={() => sfx.playClick()}
+                                            className="brutal-btn bg-[#CCFF00] text-black py-2.5 px-2.5 font-extrabold flex items-center justify-center gap-1.5"
+                                        >
+                                            <i className="fa-solid fa-paper-plane text-sm"></i> ТЕЛЕГРАМ
+                                        </a>
+                                        <a
+                                            href={ARCHIVE_CONFIG.SOCIAL_LINKS.TELEGRAM_CHANNEL}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onMouseEnter={() => sfx.playHover()}
+                                            onClick={() => sfx.playClick()}
+                                            className="brutal-btn bg-[#00E5FF] text-black py-2.5 px-2.5 font-extrabold flex items-center justify-center gap-1.5"
+                                        >
+                                            <i className="fa-brands fa-telegram text-base"></i> ТГ КАНАЛ
+                                        </a>
+                                        <a
+                                            href={ARCHIVE_CONFIG.SOCIAL_LINKS.STEAM}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onMouseEnter={() => sfx.playHover()}
+                                            onClick={() => sfx.playClick()}
+                                            className="brutal-btn bg-[#F4F0EA] text-black py-2.5 px-2.5 font-extrabold flex items-center justify-center gap-1.5"
+                                        >
+                                            <i className="fa-brands fa-steam text-base"></i> STEAM
+                                        </a>
+                                        <a
+                                            href={ARCHIVE_CONFIG.SOCIAL_LINKS.TWITTER}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onMouseEnter={() => sfx.playHover()}
+                                            onClick={() => sfx.playClick()}
+                                            className="brutal-btn bg-black text-[#CCFF00] py-2.5 px-2.5 font-extrabold flex items-center justify-center gap-1.5"
+                                        >
+                                            <i className="fa-brands fa-x-twitter text-base"></i> TWITTER
+                                        </a>
+                                        <a
+                                            href={ARCHIVE_CONFIG.SOCIAL_LINKS.LASTFM}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onMouseEnter={() => sfx.playHover()}
+                                            onClick={() => sfx.playClick()}
+                                            className="brutal-btn bg-[#FF5722] text-white py-2.5 px-2.5 font-extrabold flex items-center justify-center gap-1.5 col-span-2 sm:col-span-1"
+                                        >
+                                            <i className="fa-brands fa-lastfm text-base"></i> LAST.FM
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <DiscordWidget
+                                    discordId={discordId}
+                                    discordTag={ARCHIVE_CONFIG.DISCORD_TAG || "pruushkaa"}
+                                    isAdmin={isAdmin}
+                                    onOpenAdmin={() => setAdminModalOpen(true)}
+                                    notify={notify}
+                                />
+                            </div>
+
+                            <div className="mb-6">
+                                <LastFmWidget
+                                    notify={notify}
+                                    lastFmApiKey={lastFmApiKey}
+                                    lastFmUser={lastFmUser}
+                                    isAdmin={isAdmin}
+                                    onOpenAdmin={() => setAdminModalOpen(true)}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8 font-mono">
+                                <div
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setActiveSection('PHOTOS');
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    onMouseEnter={() => sfx.playHover()}
+                                    className="brutal-card brutal-card-interactive bg-[#CCFF00] p-5 cursor-pointer flex flex-col justify-between group"
+                                >
+                                    <div>
+                                        <div className="flex items-center justify-between text-xs font-extrabold uppercase mb-2">
+                                            <span className="bg-black text-[#CCFF00] px-2 py-0.5">VAULT // МЕДИА</span>
+                                            <span className="border-2 border-black bg-white px-2 py-0.5">{photos.length} КАДРОВ</span>
+                                        </div>
+                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2">
+                                            ФОТОАРХИВ →
+                                        </h3>
+                                        <p className="text-xs font-bold text-neutral-800 line-clamp-2">
+                                            Хроника событий, архивные снимки серверов и медиа-материалы проекта.
+                                        </p>
+                                    </div>
+                                    <div className="mt-4 pt-3 border-t-2 border-black flex items-center justify-between text-xs font-extrabold">
+                                        <span>ОТКРЫТЬ КАДРЫ</span>
+                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                                    </div>
+                                </div>
+
+                                <div
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setActiveSection('WIKI');
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    onMouseEnter={() => sfx.playHover()}
+                                    className="brutal-card brutal-card-interactive bg-[#00E5FF] p-5 cursor-pointer flex flex-col justify-between group"
+                                >
+                                    <div>
+                                        <div className="flex items-center justify-between text-xs font-extrabold uppercase mb-2">
+                                            <span className="bg-black text-[#00E5FF] px-2 py-0.5">DOCS // РЕЕСТР</span>
+                                            <span className="border-2 border-black bg-white px-2 py-0.5">{wikiArticles.length} СТАТЕЙ</span>
+                                        </div>
+                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2">
+                                            ВИКИ СРП →
+                                        </h3>
+                                        <p className="text-xs font-bold text-neutral-800 line-clamp-2">
+                                            История Социалистической рабочей партии, революция на BloodyVanilla 2, устав и лор.
+                                        </p>
+                                    </div>
+                                    <div className="mt-4 pt-3 border-t-2 border-black flex items-center justify-between text-xs font-extrabold">
+                                        <span>ЧИТАТЬ СТАТЬИ</span>
+                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                                    </div>
+                                </div>
+
+                                <div
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setActiveSection('TOOLS');
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    onMouseEnter={() => sfx.playHover()}
+                                    className="brutal-card brutal-card-interactive bg-[#F4F0EA] p-5 cursor-pointer flex flex-col justify-between group sm:col-span-2 lg:col-span-1"
+                                >
+                                    <div>
+                                        <div className="flex items-center justify-between text-xs font-extrabold uppercase mb-2">
+                                            <span className="bg-black text-white px-2 py-0.5">SYS // ТЕРМИНАЛ</span>
+                                            <span className="border-2 border-black bg-white px-2 py-0.5">ONLINE</span>
+                                        </div>
+                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2">
+                                            ТЕРМИНАЛ УТИЛИТ →
+                                        </h3>
+                                        <p className="text-xs font-bold text-neutral-800 line-clamp-2">
+                                            Генераторы, аудит системы, тестовые сигналы и звуковой движок.
+                                        </p>
+                                    </div>
+                                    <div className="mt-4 pt-3 border-t-2 border-black flex items-center justify-between text-xs font-extrabold">
+                                        <span>ЗАПУСТИТЬ ДЕКУ</span>
+                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                                    </div>
                                 </div>
                             </div>
+                        </>
+                    )}
 
-                            <div className="pt-4 border-t-2 border-black grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 font-mono text-xs">
-                                <a
-                                    href={ARCHIVE_CONFIG.SOCIAL_LINKS.TELEGRAM_PERSONAL}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onMouseEnter={() => sfx.playHover()}
-                                    onClick={() => sfx.playClick()}
-                                    className="brutal-btn bg-[#CCFF00] text-black py-2.5 px-2.5 font-extrabold flex items-center justify-center gap-1.5"
+                    {activeSection === 'PHOTOS' && (
+                        <div className="mb-8">
+                            <div className="flex items-center justify-between mb-4 font-mono text-xs">
+                                <button
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setActiveSection('HOME');
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    className="brutal-btn bg-black text-[#CCFF00] px-3.5 py-1.5 font-extrabold flex items-center gap-2"
                                 >
-                                    <i className="fa-solid fa-paper-plane text-sm"></i> ТЕЛЕГРАМ
-                                </a>
-                                <a
-                                    href={ARCHIVE_CONFIG.SOCIAL_LINKS.TELEGRAM_CHANNEL}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onMouseEnter={() => sfx.playHover()}
-                                    onClick={() => sfx.playClick()}
-                                    className="brutal-btn bg-[#00E5FF] text-black py-2.5 px-2.5 font-extrabold flex items-center justify-center gap-1.5"
-                                >
-                                    <i className="fa-brands fa-telegram text-base"></i> ТГ КАНАЛ
-                                </a>
-                                <a
-                                    href={ARCHIVE_CONFIG.SOCIAL_LINKS.STEAM}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onMouseEnter={() => sfx.playHover()}
-                                    onClick={() => sfx.playClick()}
-                                    className="brutal-btn bg-[#F4F0EA] text-black py-2.5 px-2.5 font-extrabold flex items-center justify-center gap-1.5"
-                                >
-                                    <i className="fa-brands fa-steam text-base"></i> STEAM
-                                </a>
-                                <a
-                                    href={ARCHIVE_CONFIG.SOCIAL_LINKS.TWITTER}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onMouseEnter={() => sfx.playHover()}
-                                    onClick={() => sfx.playClick()}
-                                    className="brutal-btn bg-black text-[#CCFF00] py-2.5 px-2.5 font-extrabold flex items-center justify-center gap-1.5"
-                                >
-                                    <i className="fa-brands fa-x-twitter text-base"></i> TWITTER
-                                </a>
-                                <a
-                                    href={ARCHIVE_CONFIG.SOCIAL_LINKS.LASTFM}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onMouseEnter={() => sfx.playHover()}
-                                    onClick={() => sfx.playClick()}
-                                    className="brutal-btn bg-[#FF5722] text-white py-2.5 px-2.5 font-extrabold flex items-center justify-center gap-1.5 col-span-2 sm:col-span-1"
-                                >
-                                    <i className="fa-brands fa-lastfm text-base"></i> LAST.FM
-                                </a>
+                                    <i className="fa-solid fa-arrow-left"></i> НА ГЛАВНУЮ (МУЗЫКА И СОЦСЕТИ)
+                                </button>
+                                <span className="text-neutral-600 font-bold hidden sm:inline">
+                                    РАЗДЕЛ: ФОТОАРХИВ ({photos.length} КАДРОВ)
+                                </span>
                             </div>
-                        </div>
-
-                        <DiscordWidget
-                            discordId={discordId}
-                            discordTag={ARCHIVE_CONFIG.DISCORD_TAG || "pruushkaa"}
-                            isAdmin={isAdmin}
-                            onOpenAdmin={() => setAdminModalOpen(true)}
-                            notify={notify}
-                        />
-                    </div>
-
-                    <div className="mb-6">
-                        <LastFmWidget
-                            notify={notify}
-                            lastFmApiKey={lastFmApiKey}
-                            lastFmUser={lastFmUser}
-                            isAdmin={isAdmin}
-                            onOpenAdmin={() => setAdminModalOpen(true)}
-                        />
-                    </div>
-
-                    {(activeSection === 'ALL' || activeSection === 'PHOTOS') && (
-                        <div className="mb-6">
                             <PhotoArchive
                                 photos={photos}
                                 setPhotos={setPhotos}
@@ -3259,8 +3627,23 @@
                         </div>
                     )}
 
-                    {(activeSection === 'ALL' || activeSection === 'WIKI') && (
-                        <div className="mb-6">
+                    {activeSection === 'WIKI' && (
+                        <div className="mb-8">
+                            <div className="flex items-center justify-between mb-4 font-mono text-xs">
+                                <button
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setActiveSection('HOME');
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    className="brutal-btn bg-black text-[#CCFF00] px-3.5 py-1.5 font-extrabold flex items-center gap-2"
+                                >
+                                    <i className="fa-solid fa-arrow-left"></i> НА ГЛАВНУЮ (МУЗЫКА И СОЦСЕТИ)
+                                </button>
+                                <span className="text-neutral-600 font-bold hidden sm:inline">
+                                    РАЗДЕЛ: ВИКИ СРП ({wikiArticles.length} СТАТЕЙ)
+                                </span>
+                            </div>
                             <SrpWiki
                                 articles={wikiArticles}
                                 setArticles={setWikiArticles}
@@ -3272,8 +3655,23 @@
                         </div>
                     )}
 
-                    {(activeSection === 'ALL' || activeSection === 'TOOLS') && (
+                    {activeSection === 'TOOLS' && (
                         <div className="mb-8">
+                            <div className="flex items-center justify-between mb-4 font-mono text-xs">
+                                <button
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setActiveSection('HOME');
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    className="brutal-btn bg-black text-[#CCFF00] px-3.5 py-1.5 font-extrabold flex items-center gap-2"
+                                >
+                                    <i className="fa-solid fa-arrow-left"></i> НА ГЛАВНУЮ (МУЗЫКА И СОЦСЕТИ)
+                                </button>
+                                <span className="text-neutral-600 font-bold hidden sm:inline">
+                                    РАЗДЕЛ: ТЕРМИНАЛ УТИЛИТ
+                                </span>
+                            </div>
                             <UtilityDeck notify={notify} />
                         </div>
                     )}
