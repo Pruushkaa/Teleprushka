@@ -26,6 +26,11 @@
     <!-- Marked Markdown Parser -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
+    <!-- Leaflet & leaflet-gpx Map Engine -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.7.0/gpx.min.js"></script>
+
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -142,6 +147,69 @@
         ::-webkit-scrollbar-thumb {
             background: #FF5722;
             border: 2px solid #000;
+        }
+
+        /* Brutalist Leaflet Overrides */
+        .leaflet-container {
+            font-family: 'Space Grotesk', sans-serif !important;
+            background-color: #0D0E12 !important;
+            border-radius: 0px !important;
+        }
+        .leaflet-bar {
+            border: 3px solid #000000 !important;
+            box-shadow: 4px 4px 0px 0px #000000 !important;
+            border-radius: 0px !important;
+            overflow: hidden;
+        }
+        .leaflet-bar a {
+            background-color: var(--card-bg) !important;
+            color: var(--text-main) !important;
+            border-bottom: 2px solid #000000 !important;
+            font-weight: 800 !important;
+            border-radius: 0px !important;
+            transition: all 0.1s ease;
+        }
+        .leaflet-bar a:hover {
+            background-color: #FF5722 !important;
+            color: #ffffff !important;
+        }
+        .leaflet-control-attribution {
+            background: rgba(0, 0, 0, 0.85) !important;
+            color: #d1d5db !important;
+            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 10px !important;
+            border-top: 2px solid #000 !important;
+            border-left: 2px solid #000 !important;
+            padding: 3px 8px !important;
+        }
+        .leaflet-control-attribution a {
+            color: #CCFF00 !important;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .brutal-tooltip {
+            background-color: #000000 !important;
+            color: #CCFF00 !important;
+            border: 2px solid #000000 !important;
+            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 11px !important;
+            font-weight: 800 !important;
+            border-radius: 0px !important;
+            box-shadow: 3px 3px 0px #FF5722 !important;
+            padding: 4px 8px !important;
+        }
+        .brutal-tooltip::before {
+            display: none !important;
+        }
+        .gpx-dropzone {
+            border: 2px dashed #000000;
+            transition: all 0.15s ease-in-out;
+        }
+        .gpx-dropzone.drag-active {
+            background-color: #CCFF00 !important;
+            border-color: #FF5722 !important;
+            transform: scale(1.01);
+            box-shadow: 6px 6px 0px 0px #000000;
         }
     </style>
 </head>
@@ -2781,6 +2849,895 @@
             );
         };
 
+        /* ==========================================================================
+           GPX ROUTE ARCHIVE & INTERACTIVE MAP MODULE (LEAFLET + LEAFLET-GPX)
+           ========================================================================== */
+        const GpxRouteArchive = ({ tracks, notify, darkMode }) => {
+            const [localTracks, setLocalTracks] = useState([]);
+            const [selectedTrackId, setSelectedTrackId] = useState(null);
+            const [selectedCategory, setSelectedCategory] = useState('ВСЕ');
+            const [searchQuery, setSearchQuery] = useState('');
+            const [isDraggingOver, setIsDraggingOver] = useState(false);
+            const [isLoadingTrack, setIsLoadingTrack] = useState(false);
+            const [mapError, setMapError] = useState(null);
+            const [showStatsModal, setShowStatsModal] = useState(false);
+            const [tileMode, setTileMode] = useState('auto'); // 'auto', 'dark', 'light'
+
+            // Active track live telemetry calculated by L.GPX
+            const [activeTelemetry, setActiveTelemetry] = useState(null);
+
+            const mapContainerRef = useRef(null);
+            const mapInstanceRef = useRef(null);
+            const tileLayerRef = useRef(null);
+            const gpxLayerRef = useRef(null);
+            const markersLayerRef = useRef(null);
+            const fileInputRef = useRef(null);
+
+            // Combine local (dragged/uploaded) tracks with database manifest
+            const allTracks = useMemo(() => {
+                return [...localTracks, ...(tracks || [])];
+            }, [localTracks, tracks]);
+
+            // Set initial selected track
+            useEffect(() => {
+                if (!selectedTrackId && allTracks.length > 0) {
+                    setSelectedTrackId(allTracks[0].id);
+                }
+            }, [allTracks, selectedTrackId]);
+
+            const currentTrack = useMemo(() => {
+                return allTracks.find(t => t.id === selectedTrackId) || allTracks[0] || null;
+            }, [allTracks, selectedTrackId]);
+
+            // Unique categories from tags
+            const categories = useMemo(() => {
+                const set = new Set(['ВСЕ']);
+                if (localTracks.length > 0) set.add('local');
+                allTracks.forEach(t => {
+                    if (Array.isArray(t.tags)) {
+                        t.tags.forEach(tag => set.add(tag));
+                    }
+                });
+                return Array.from(set);
+            }, [allTracks, localTracks]);
+
+            // Filtered tracks
+            const filteredTracks = useMemo(() => {
+                return allTracks.filter(t => {
+                    const matchesCategory = selectedCategory === 'ВСЕ' ||
+                        (Array.isArray(t.tags) && t.tags.includes(selectedCategory)) ||
+                        (selectedCategory === 'local' && t.isLocal);
+                    const q = searchQuery.toLowerCase().trim();
+                    const matchesQuery = !q ||
+                        (t.title && t.title.toLowerCase().includes(q)) ||
+                        (t.description && t.description.toLowerCase().includes(q)) ||
+                        (Array.isArray(t.tags) && t.tags.some(tag => tag.toLowerCase().includes(q)));
+                    return matchesCategory && matchesQuery;
+                });
+            }, [allTracks, selectedCategory, searchQuery]);
+
+            // Tile URL: CartoDB Dark Matter vs Positron
+            const isDarkTiles = useMemo(() => {
+                if (tileMode === 'dark') return true;
+                if (tileMode === 'light') return false;
+                return darkMode;
+            }, [tileMode, darkMode]);
+
+            const tileUrl = isDarkTiles
+                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+
+            // 1. Initialize Map
+            useEffect(() => {
+                if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+                if (typeof L === 'undefined') {
+                    console.error('Leaflet is not loaded');
+                    return;
+                }
+
+                const map = L.map(mapContainerRef.current, {
+                    zoomControl: false,
+                    attributionControl: true
+                }).setView([55.751244, 37.618423], 11);
+
+                L.control.zoom({ position: 'topright' }).addTo(map);
+
+                const tiles = L.tileLayer(tileUrl, {
+                    maxZoom: 19,
+                    subdomains: 'abcd',
+                    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                }).addTo(map);
+
+                const markers = L.layerGroup().addTo(map);
+
+                mapInstanceRef.current = map;
+                tileLayerRef.current = tiles;
+                markersLayerRef.current = markers;
+
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 250);
+
+                return () => {
+                    map.remove();
+                    mapInstanceRef.current = null;
+                };
+            }, []);
+
+            // 2. Dynamic Tile Switch on Theme change
+            useEffect(() => {
+                if (tileLayerRef.current) {
+                    tileLayerRef.current.setUrl(tileUrl);
+                }
+            }, [tileUrl]);
+
+            // 3. Render GPX Track Layer & Custom SVG Markers
+            const renderTrack = useCallback((track) => {
+                if (!track || !mapInstanceRef.current) return;
+                if (typeof L === 'undefined' || typeof L.GPX === 'undefined') {
+                    setMapError('Библиотека leaflet-gpx не загружена.');
+                    return;
+                }
+
+                setIsLoadingTrack(true);
+                setMapError(null);
+
+                const map = mapInstanceRef.current;
+
+                // Remove previous track & markers from memory
+                if (gpxLayerRef.current) {
+                    map.removeLayer(gpxLayerRef.current);
+                    gpxLayerRef.current = null;
+                }
+                if (markersLayerRef.current) {
+                    markersLayerRef.current.clearLayers();
+                }
+
+                const trackSource = track.rawGpx || track.file;
+                if (!trackSource) {
+                    setIsLoadingTrack(false);
+                    setMapError('Файл трека отсутствует.');
+                    return;
+                }
+
+                // Strictly use site primary accent color #FF5722
+                const accentColor = '#FF5722';
+
+                try {
+                    const gpx = new L.GPX(trackSource, {
+                        async: true,
+                        marker_options: {
+                            startIconUrl: null,
+                            endIconUrl: null,
+                            shadowUrl: null,
+                            wptIconUrls: { '': null }
+                        },
+                        polyline_options: {
+                            color: accentColor,
+                            opacity: 0.95,
+                            weight: 3.5,
+                            lineCap: 'round',
+                            lineJoin: 'round'
+                        }
+                    });
+
+                    gpx.on('loaded', (e) => {
+                        const g = e.target;
+                        if (!mapInstanceRef.current) return;
+
+                        // Fly smoothly to track bounds
+                        const bounds = g.getBounds();
+                        if (bounds && bounds.isValid()) {
+                            mapInstanceRef.current.flyToBounds(bounds, {
+                                padding: [45, 45],
+                                duration: 1.1,
+                                easeLinearity: 0.25
+                            });
+                        }
+
+                        // Extract start & finish points for custom minimalist SVG markers
+                        let startPoint = null;
+                        let endPoint = null;
+                        let minEle = 99999;
+                        let maxEle = -99999;
+                        let totalPoints = 0;
+
+                        const layers = g.getLayers();
+                        for (const l of layers) {
+                            if (typeof l.getLatLngs === 'function') {
+                                const latlngs = l.getLatLngs();
+                                const flat = Array.isArray(latlngs[0]) ? latlngs.flat(Infinity) : latlngs;
+                                if (flat.length > 0) {
+                                    startPoint = flat[0];
+                                    endPoint = flat[flat.length - 1];
+                                    totalPoints += flat.length;
+                                    for (const p of flat) {
+                                        if (p.meta && typeof p.meta.ele === 'number') {
+                                            if (p.meta.ele < minEle) minEle = p.meta.ele;
+                                            if (p.meta.ele > maxEle) maxEle = p.meta.ele;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Add custom Start SVG Marker (Lime pulse)
+                        if (markersLayerRef.current && startPoint) {
+                            const startIcon = L.divIcon({
+                                className: 'gpx-pin-start',
+                                iconSize: [28, 28],
+                                iconAnchor: [14, 14],
+                                html: `<div style="position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;">
+                                    <div style="position:absolute;inset:0;border-radius:50%;background:#CCFF00;opacity:0.35;animation:ping 1.5s cubic-bezier(0,0,0.2,1) infinite;"></div>
+                                    <div style="width:20px;height:20px;background:#CCFF00;border:2.5px solid #000;box-shadow:2px 2px 0 #000;display:flex;align-items:center;justify-content:center;color:#000;font-size:10px;font-weight:900;font-family:'Space Grotesk',sans-serif;">
+                                        S
+                                    </div>
+                                </div>`
+                            });
+                            const m1 = L.marker(startPoint, { icon: startIcon }).bindTooltip(`СТАРТ: ${track.title}`, { direction: 'top', offset: [0, -10], className: 'brutal-tooltip' });
+                            markersLayerRef.current.addLayer(m1);
+                        }
+
+                        // Add custom Finish SVG Marker (Accent orange)
+                        if (markersLayerRef.current && endPoint) {
+                            const endIcon = L.divIcon({
+                                className: 'gpx-pin-end',
+                                iconSize: [28, 28],
+                                iconAnchor: [14, 14],
+                                html: `<div style="position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;">
+                                    <div style="width:20px;height:20px;background:#FF5722;border:2.5px solid #000;box-shadow:2px 2px 0 #000;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:900;font-family:'Space Grotesk',sans-serif;">
+                                        F
+                                    </div>
+                                </div>`
+                            });
+                            const m2 = L.marker(endPoint, { icon: endIcon }).bindTooltip(`ФИНИШ: ${track.title}`, { direction: 'top', offset: [0, -10], className: 'brutal-tooltip' });
+                            markersLayerRef.current.addLayer(m2);
+                        }
+
+                        // Calculate and update telemetry
+                        const distM = typeof g.get_distance === 'function' ? g.get_distance() : 0;
+                        const gainM = typeof g.get_elevation_gain === 'function' ? g.get_elevation_gain() : 0;
+                        const lossM = typeof g.get_elevation_loss === 'function' ? g.get_elevation_loss() : 0;
+                        const moveMs = typeof g.get_moving_time === 'function' && g.get_moving_time() > 0 ? g.get_moving_time() : (typeof g.get_total_time === 'function' ? g.get_total_time() : 0);
+                        const speedKmh = typeof g.get_moving_speed === 'function' && g.get_moving_speed() > 0
+                            ? g.get_moving_speed() * 3.6
+                            : (distM > 0 && moveMs > 0 ? ((distM / 1000) / (moveMs / 3600000)) : 0);
+
+                        const totalSec = Math.round(moveMs / 1000);
+                        const h = Math.floor(totalSec / 3600);
+                        const m = Math.floor((totalSec % 3600) / 60);
+                        const s = totalSec % 60;
+                        const formattedTime = h > 0 ? `${h}ч ${m}м` : (m > 0 ? `${m}м ${s}с` : `${s}с`);
+
+                        const telemetry = {
+                            distanceKm: (distM / 1000).toFixed(1),
+                            elevationGainM: Math.round(gainM),
+                            elevationLossM: Math.round(lossM),
+                            movingTime: formattedTime,
+                            avgSpeed: speedKmh > 0 ? speedKmh.toFixed(1) : null,
+                            pointsCount: totalPoints,
+                            minEle: minEle < 90000 ? Math.round(minEle) : null,
+                            maxEle: maxEle > -90000 ? Math.round(maxEle) : null
+                        };
+
+                        setActiveTelemetry(telemetry);
+                        setIsLoadingTrack(false);
+                    });
+
+                    gpx.on('error', (err) => {
+                        console.error('GPX load error:', err);
+                        setMapError(`Не удалось загрузить .gpx файл [${track.title}]. Проверьте файл.`);
+                        setIsLoadingTrack(false);
+                        notify('ОШИБКА ЗАГРУЗКИ GPX ФАЙЛА', 'warn');
+                    });
+
+                    gpx.addTo(map);
+                    gpxLayerRef.current = gpx;
+
+                } catch (e) {
+                    console.error('GPX init exception:', e);
+                    setMapError(e.message);
+                    setIsLoadingTrack(false);
+                }
+            }, [notify]);
+
+            // Re-render when selected track changes
+            useEffect(() => {
+                if (currentTrack && mapInstanceRef.current) {
+                    renderTrack(currentTrack);
+                }
+            }, [currentTrack, renderTrack]);
+
+            // File Drag & Drop logic
+            const handleGpxFile = (file) => {
+                if (!file) return;
+                if (!file.name.toLowerCase().endsWith('.gpx')) {
+                    notify('ОШИБКА: ТРЕБУЕТСЯ ФАЙЛ В ФОРМАТЕ .GPX', 'warn');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    const cleanTitle = file.name.replace(/\.gpx$/i, '').replace(/[-_]+/g, ' ').toUpperCase();
+                    const today = new Date().toISOString().slice(0, 10);
+                    const newId = `local-${Date.now()}`;
+
+                    const newTrack = {
+                        id: newId,
+                        title: cleanTitle,
+                        date: today,
+                        file: null,
+                        rawGpx: text,
+                        description: `Локальный предпросмотр [${file.name}], размер: ${(file.size / 1024).toFixed(1)} КБ`,
+                        tags: ['local', 'preview'],
+                        isLocal: true
+                    };
+
+                    setLocalTracks(prev => [newTrack, ...prev]);
+                    setSelectedTrackId(newId);
+                    sfx.playSuccess();
+                    triggerGlitchSpike(1.2);
+                    notify(`ТРЕК [${file.name}] УСПЕШНО ЗАГРУЖЕН НА КАРТУ!`);
+                    setShowStatsModal(true);
+                };
+                reader.readAsText(file);
+            };
+
+            const onDragOver = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isDraggingOver) setIsDraggingOver(true);
+            };
+
+            const onDragLeave = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingOver(false);
+            };
+
+            const onDrop = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingOver(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) handleGpxFile(file);
+            };
+
+            // Download GPX
+            const handleDownloadGpx = () => {
+                if (!currentTrack) return;
+                sfx.playSuccess();
+                if (currentTrack.rawGpx) {
+                    const blob = new Blob([currentTrack.rawGpx], { type: 'application/gpx+xml' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${currentTrack.id}.gpx`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                } else if (currentTrack.file) {
+                    const a = document.createElement('a');
+                    a.href = currentTrack.file;
+                    a.download = `${currentTrack.id}.gpx`;
+                    a.click();
+                }
+                notify(`СКАЧИВАНИЕ .GPX [${currentTrack.title}]...`);
+            };
+
+            // Recenter
+            const handleRecenter = () => {
+                if (!gpxLayerRef.current || !mapInstanceRef.current) return;
+                sfx.playClick();
+                const bounds = gpxLayerRef.current.getBounds();
+                if (bounds && bounds.isValid()) {
+                    mapInstanceRef.current.flyToBounds(bounds, { padding: [45, 45] });
+                }
+            };
+
+            // Current display telemetry (prefer live computed, fallback to manifest)
+            const displayTelemetry = activeTelemetry || currentTrack?.telemetry || {
+                distanceKm: '--',
+                elevationGainM: '--',
+                movingTime: '--'
+            };
+
+            return (
+                <section className="brutal-card p-5 bg-white text-black">
+                    {/* Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black pb-3 mb-4">
+                        <div className="flex items-center gap-2.5">
+                            <span className="px-2 py-0.5 bg-[#FF5722] text-white font-mono text-xs font-extrabold border-2 border-black">
+                                GPX_VIEWER.DB
+                            </span>
+                            <h2 className="font-extrabold text-lg sm:text-xl uppercase tracking-tight">
+                                КАРТА МАРШРУТОВ // GPX АРХИВ
+                            </h2>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                            <span className="px-2 py-1 bg-[#F4F0EA] border-2 border-black font-bold">
+                                МАРШРУТОВ: {allTracks.length}
+                            </span>
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                onMouseEnter={() => sfx.playHover()}
+                                className="brutal-btn bg-[#CCFF00] text-black px-3 py-1 font-extrabold uppercase flex items-center gap-1.5"
+                                title="Загрузить локальный .gpx файл с компьютера"
+                            >
+                                <i className="fa-solid fa-file-arrow-up"></i>
+                                <span>ЗАГРУЗИТЬ .GPX</span>
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".gpx,application/gpx+xml"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleGpxFile(file);
+                                    e.target.value = '';
+                                }}
+                                className="hidden"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Filter & Categories Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-4 font-mono text-xs">
+                        <div className="flex flex-wrap gap-1.5">
+                            {categories.map((cat) => (
+                                <button
+                                    key={cat}
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setSelectedCategory(cat);
+                                    }}
+                                    onMouseEnter={() => sfx.playHover()}
+                                    className={`brutal-btn px-2.5 py-1 font-bold uppercase ${
+                                        selectedCategory === cat
+                                            ? 'bg-[#FF5722] text-white shadow-[2px_2px_0px_#000]'
+                                            : 'bg-[#F4F0EA] text-black'
+                                    }`}
+                                >
+                                    {cat === 'local' ? '📁 ЛОКАЛЬНЫЕ' : `#${cat}`}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="relative w-full sm:w-64">
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Поиск по маршрутам..."
+                                className="w-full p-2 pl-7 border-2 border-black bg-[#F4F0EA] font-bold text-xs focus:outline-none"
+                            />
+                            <i className="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-neutral-500 text-[11px]"></i>
+                        </div>
+                    </div>
+
+                    {/* Two-column layout: Left Archive Cards, Right Map */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                        {/* LEFT COLUMN: Dropzone & Route Cards */}
+                        <div className="lg:col-span-5 flex flex-col space-y-3 font-mono text-xs">
+                            {/* Drag and Drop Zone */}
+                            <div
+                                onDragOver={onDragOver}
+                                onDragLeave={onDragLeave}
+                                onDrop={onDrop}
+                                onClick={() => fileInputRef.current?.click()}
+                                className={`gpx-dropzone p-3.5 text-center cursor-pointer select-none transition-all ${
+                                    isDraggingOver
+                                        ? 'drag-active'
+                                        : 'bg-[#F4F0EA] hover:bg-neutral-200 shadow-[3px_3px_0px_#000]'
+                                }`}
+                            >
+                                <div className="flex items-center justify-center gap-2 font-extrabold uppercase">
+                                    <i className="fa-solid fa-cloud-arrow-up text-[#FF5722] text-sm"></i>
+                                    <span>ПЕРЕТАЩИ .GPX ФАЙЛ СЮДА</span>
+                                </div>
+                                <div className="text-[10px] text-neutral-600 font-bold mt-1">
+                                    Или кликни для выбора с ПК (мгновенный парсинг без сохранения в репозиторий)
+                                </div>
+                            </div>
+
+                            {/* Cards List Header */}
+                            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase px-1 text-neutral-600">
+                                <span>РЕЕСТР МАРШРУТОВ ({filteredTracks.length}):</span>
+                                <span>КЛИК ДЛЯ ПЕРЕХОДА НА КАРТЕ</span>
+                            </div>
+
+                            {/* Scrollable list of cards */}
+                            <div className="space-y-3 max-h-[620px] overflow-y-auto pr-1">
+                                {filteredTracks.length === 0 ? (
+                                    <div className="p-4 bg-white border-2 border-black text-center font-bold">
+                                        МАРШРУТЫ НЕ НАЙДЕНЫ
+                                    </div>
+                                ) : (
+                                    filteredTracks.map((item) => {
+                                        const isSelected = currentTrack?.id === item.id;
+                                        const tDist = item.telemetry?.distanceKm || (isSelected ? activeTelemetry?.distanceKm : null) || '--';
+                                        const tGain = item.telemetry?.elevationGainM || (isSelected ? activeTelemetry?.elevationGainM : null) || '--';
+                                        const tTime = item.telemetry?.movingTime || (isSelected ? activeTelemetry?.movingTime : null) || '--';
+
+                                        return (
+                                            <div
+                                                key={item.id}
+                                                onClick={() => {
+                                                    sfx.playClick();
+                                                    setSelectedTrackId(item.id);
+                                                    triggerGlitchSpike(0.4);
+                                                }}
+                                                onMouseEnter={() => sfx.playHover()}
+                                                className={`brutal-card brutal-card-interactive p-3.5 cursor-pointer transition-all ${
+                                                    isSelected
+                                                        ? 'border-3 border-[#FF5722] shadow-[5px_5px_0px_#FF5722] bg-[#FF5722]/5'
+                                                        : 'bg-white hover:bg-neutral-50'
+                                                }`}
+                                            >
+                                                {/* Card Header */}
+                                                <div className="flex items-center justify-between font-mono text-[11px] font-bold mb-1.5">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="bg-black text-white px-1.5 py-0.5 text-[10px]">
+                                                            {item.id}
+                                                        </span>
+                                                        {item.isLocal && (
+                                                            <span className="bg-[#00E5FF] text-black border border-black px-1.5 py-0.5 text-[9px] font-extrabold">
+                                                                LOCAL
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {isSelected && (
+                                                            <span className="bg-[#FF5722] text-white px-1.5 py-0.5 text-[9px] font-extrabold flex items-center gap-1 animate-pulse">
+                                                                <span className="w-1.5 h-1.5 bg-[#CCFF00] inline-block rounded-full"></span>
+                                                                АКТИВЕН
+                                                            </span>
+                                                        )}
+                                                        <span className="bg-white border border-black px-1.5 py-0.5 text-[10px]">
+                                                            {item.date}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Title */}
+                                                <h3 className="font-extrabold text-sm sm:text-base uppercase tracking-tight mb-1 text-black">
+                                                    {item.title}
+                                                </h3>
+
+                                                {/* Telemetry Grid */}
+                                                <div className="grid grid-cols-3 gap-1.5 my-2 p-1.5 bg-[#F4F0EA] border-2 border-black text-center font-mono">
+                                                    <div>
+                                                        <div className="text-[9px] font-bold text-neutral-500 uppercase">ДИСТАНЦИЯ</div>
+                                                        <div className="font-extrabold text-[#FF5722] text-xs">
+                                                            {tDist} {tDist !== '--' ? 'км' : ''}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[9px] font-bold text-neutral-500 uppercase">ПОДЪЕМ</div>
+                                                        <div className="font-extrabold text-black text-xs">
+                                                            {tGain !== '--' ? `+${tGain} м` : '--'}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[9px] font-bold text-neutral-500 uppercase">ВРЕМЯ</div>
+                                                        <div className="font-extrabold text-neutral-900 text-xs">
+                                                            {tTime}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Description */}
+                                                {item.description && (
+                                                    <p className="text-[11px] font-bold text-neutral-700 mb-2 line-clamp-2 leading-relaxed">
+                                                        {item.description}
+                                                    </p>
+                                                )}
+
+                                                {/* Tags */}
+                                                <div className="flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-neutral-300">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {(item.tags || []).map((t) => (
+                                                            <span
+                                                                key={t}
+                                                                className="px-1.5 py-0.5 bg-black text-[#CCFF00] font-mono text-[9px] font-bold"
+                                                            >
+                                                                #{t}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                    <span className="text-[10px] font-extrabold text-[#FF5722] flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                                        ПОКАЗАТЬ <i className="fa-solid fa-arrow-right"></i>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+
+                        {/* RIGHT COLUMN: Leaflet Interactive Map */}
+                        <div className="lg:col-span-7 flex flex-col font-mono">
+                            <div className="brutal-card bg-[#0D0E12] border-3 border-black shadow-[6px_6px_0px_#000] overflow-hidden flex flex-col relative">
+                                {/* Map Toolbar */}
+                                <div className="bg-black text-white p-2.5 px-3 border-b-3 border-black flex flex-wrap items-center justify-between gap-2 text-xs">
+                                    <div className="flex items-center gap-2 truncate">
+                                        <span className="w-2.5 h-2.5 bg-[#FF5722] inline-block shrink-0"></span>
+                                        <span className="font-extrabold tracking-tight truncate uppercase">
+                                            {currentTrack ? currentTrack.title : 'КАРТА МАРШРУТОВ'}
+                                        </span>
+                                        {currentTrack?.date && (
+                                            <span className="hidden sm:inline bg-[#181A20] text-[#CCFF00] border border-neutral-700 px-1.5 py-0.5 text-[10px]">
+                                                {currentTrack.date}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                            onClick={handleRecenter}
+                                            onMouseEnter={() => sfx.playHover()}
+                                            className="brutal-btn bg-white text-black px-2 py-1 font-bold text-[10px] uppercase flex items-center gap-1"
+                                            title="Приблизить к границам трека"
+                                        >
+                                            <i className="fa-solid fa-arrows-to-eye text-[#FF5722]"></i>
+                                            <span className="hidden sm:inline">В ГРАНИЦЫ</span>
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                sfx.playClick();
+                                                setTileMode(prev => {
+                                                    if (prev === 'auto') return darkMode ? 'light' : 'dark';
+                                                    if (prev === 'dark') return 'light';
+                                                    return 'auto';
+                                                });
+                                            }}
+                                            onMouseEnter={() => sfx.playHover()}
+                                            className="brutal-btn bg-neutral-800 text-white px-2 py-1 font-bold text-[10px] uppercase flex items-center gap-1"
+                                            title="Переключить тему тайлов (Dark Matter / Positron)"
+                                        >
+                                            <i className="fa-solid fa-circle-half-stroke text-[#CCFF00]"></i>
+                                            <span>{isDarkTiles ? 'DARK TILES' : 'LIGHT TILES'}</span>
+                                        </button>
+
+                                        <button
+                                            onClick={handleDownloadGpx}
+                                            onMouseEnter={() => sfx.playHover()}
+                                            className="brutal-btn bg-[#CCFF00] text-black px-2 py-1 font-bold text-[10px] uppercase flex items-center gap-1"
+                                            title="Скачать .GPX файл этого маршрута"
+                                        >
+                                            <i className="fa-solid fa-download"></i>
+                                            <span className="hidden sm:inline">.GPX</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Map Canvas Container */}
+                                <div
+                                    onDragOver={onDragOver}
+                                    onDragLeave={onDragLeave}
+                                    onDrop={onDrop}
+                                    className="relative w-full h-[520px] sm:h-[620px] bg-[#0D0E12]"
+                                >
+                                    <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+                                    {/* Drag Over Overlay on Map */}
+                                    {isDraggingOver && (
+                                        <div className="absolute inset-0 z-30 bg-[#CCFF00]/90 backdrop-blur-sm border-4 border-[#FF5722] flex flex-col items-center justify-center p-6 text-black pointer-events-none animate-pulse">
+                                            <i className="fa-solid fa-file-arrow-down text-5xl mb-3 text-[#FF5722]"></i>
+                                            <div className="font-extrabold text-xl uppercase tracking-wider text-center">
+                                                ОТПУСТИ .GPX ДЛЯ МГНОВЕННОГО ПАРСИНГА
+                                            </div>
+                                            <div className="text-xs font-bold text-neutral-800 mt-1">
+                                                Линия трека сразу отобразится на карте Leaflet
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Loading State Overlay */}
+                                    {isLoadingTrack && (
+                                        <div className="absolute top-4 left-4 z-20 bg-black/90 text-white border-2 border-white px-3 py-1.5 flex items-center gap-2 text-xs font-bold shadow-[3px_3px_0px_#000]">
+                                            <span className="w-2.5 h-2.5 bg-[#FF5722] animate-ping inline-block"></span>
+                                            <span>РЕНДЕР ТРЕКА GPX...</span>
+                                        </div>
+                                    )}
+
+                                    {/* Map Error Banner */}
+                                    {mapError && (
+                                        <div className="absolute top-4 left-4 right-4 z-20 bg-[#FF5722] text-white border-2 border-black p-2.5 flex items-center justify-between text-xs font-bold shadow-[4px_4px_0px_#000]">
+                                            <div className="flex items-center gap-2">
+                                                <i className="fa-solid fa-triangle-exclamation"></i>
+                                                <span>{mapError}</span>
+                                            </div>
+                                            <button
+                                                onClick={() => currentTrack && renderTrack(currentTrack)}
+                                                className="brutal-btn bg-black text-white px-2 py-0.5 text-[10px] uppercase font-bold"
+                                            >
+                                                ПОВТОРИТЬ
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Live Floating Bottom Telemetry HUD Ribbon */}
+                                    <div className="absolute bottom-3 left-3 right-3 z-10 brutal-card p-2.5 bg-black/90 text-white border-2 border-white/20 backdrop-blur-sm flex flex-wrap items-center justify-between gap-2 shadow-[4px_4px_0px_#000] text-xs">
+                                        <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+                                            <div className="flex items-center gap-1.5">
+                                                <i className="fa-solid fa-route text-[#FF5722]"></i>
+                                                <div>
+                                                    <span className="text-[9px] text-neutral-400 block leading-tight">ДИСТАНЦИЯ</span>
+                                                    <span className="font-extrabold text-[#FF5722] text-sm">
+                                                        {displayTelemetry.distanceKm} {displayTelemetry.distanceKm !== '--' ? 'км' : ''}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5">
+                                                <i className="fa-solid fa-mountain text-[#CCFF00]"></i>
+                                                <div>
+                                                    <span className="text-[9px] text-neutral-400 block leading-tight">НАБОР ВЫСОТЫ</span>
+                                                    <span className="font-extrabold text-[#CCFF00] text-sm">
+                                                        {displayTelemetry.elevationGainM !== '--' ? `+${displayTelemetry.elevationGainM} м` : '--'}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5">
+                                                <i className="fa-solid fa-stopwatch text-[#00E5FF]"></i>
+                                                <div>
+                                                    <span className="text-[9px] text-neutral-400 block leading-tight">ВРЕМЯ</span>
+                                                    <span className="font-extrabold text-white text-sm">
+                                                        {displayTelemetry.movingTime}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {activeTelemetry?.avgSpeed && (
+                                                <div className="hidden sm:flex items-center gap-1.5">
+                                                    <i className="fa-solid fa-gauge-high text-neutral-300"></i>
+                                                    <div>
+                                                        <span className="text-[9px] text-neutral-400 block leading-tight">СКОРОСТЬ</span>
+                                                        <span className="font-extrabold text-white text-sm">
+                                                            {activeTelemetry.avgSpeed} км/ч
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <button
+                                            onClick={() => {
+                                                sfx.playClick();
+                                                setShowStatsModal(true);
+                                            }}
+                                            onMouseEnter={() => sfx.playHover()}
+                                            className="brutal-btn bg-[#CCFF00] text-black px-2.5 py-1 text-[11px] font-extrabold uppercase flex items-center gap-1 ml-auto"
+                                        >
+                                            <span>ПОЛНАЯ ТЕЛЕМЕТРИЯ</span>
+                                            <i className="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Detailed Telemetry Modal Dialog */}
+                    {showStatsModal && currentTrack && (
+                        <div
+                            className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 font-mono"
+                            onClick={() => setShowStatsModal(false)}
+                        >
+                            <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="brutal-card p-5 sm:p-6 bg-white text-black max-w-lg w-full border-4 border-black shadow-[8px_8px_0px_#000] relative space-y-4"
+                            >
+                                <div className="flex items-center justify-between border-b-2 border-black pb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-3 h-3 bg-[#FF5722] border border-black inline-block"></span>
+                                        <span className="font-extrabold text-sm sm:text-base uppercase tracking-tight">
+                                            ТЕЛЕМЕТРИЯ // {currentTrack.title}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowStatsModal(false)}
+                                        className="brutal-btn w-7 h-7 bg-black text-white font-extrabold flex items-center justify-center text-xs"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                {/* 4 Main Stats */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="p-3 bg-[#F4F0EA] border-2 border-black">
+                                        <div className="text-[10px] font-bold text-neutral-500 uppercase">ДИСТАНЦИЯ</div>
+                                        <div className="text-2xl sm:text-3xl font-extrabold text-[#FF5722]">
+                                            {displayTelemetry.distanceKm} <span className="text-xs text-black">КМ</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3 bg-[#F4F0EA] border-2 border-black">
+                                        <div className="text-[10px] font-bold text-neutral-500 uppercase">НАБОР ВЫСОТЫ</div>
+                                        <div className="text-2xl sm:text-3xl font-extrabold text-black">
+                                            {displayTelemetry.elevationGainM !== '--' ? `+${displayTelemetry.elevationGainM}` : '--'} <span className="text-xs text-neutral-600">М</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3 bg-[#F4F0EA] border-2 border-black">
+                                        <div className="text-[10px] font-bold text-neutral-500 uppercase">ВРЕМЯ В ДВИЖЕНИИ</div>
+                                        <div className="text-2xl sm:text-3xl font-extrabold text-black">
+                                            {displayTelemetry.movingTime}
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3 bg-[#F4F0EA] border-2 border-black">
+                                        <div className="text-[10px] font-bold text-neutral-500 uppercase">СРЕДНЯЯ СКОРОСТЬ</div>
+                                        <div className="text-2xl sm:text-3xl font-extrabold text-[#00E5FF]">
+                                            {activeTelemetry?.avgSpeed || '--'} <span className="text-xs text-black">КМ/Ч</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Extra Information Table */}
+                                <div className="p-3 bg-[#F4F0EA] border-2 border-black space-y-1.5 text-xs">
+                                    <div className="flex justify-between border-b border-neutral-300 pb-1">
+                                        <span className="text-neutral-600 font-bold">ИДЕНТИФИКАТОР:</span>
+                                        <span className="font-extrabold">{currentTrack.id}</span>
+                                    </div>
+                                    <div className="flex justify-between border-b border-neutral-300 pb-1">
+                                        <span className="text-neutral-600 font-bold">ДАТА МАРШРУТА:</span>
+                                        <span className="font-extrabold">{currentTrack.date}</span>
+                                    </div>
+                                    {activeTelemetry?.pointsCount > 0 && (
+                                        <div className="flex justify-between border-b border-neutral-300 pb-1">
+                                            <span className="text-neutral-600 font-bold">ТОЧЕК GPS:</span>
+                                            <span className="font-extrabold">{activeTelemetry.pointsCount} координат</span>
+                                        </div>
+                                    )}
+                                    {activeTelemetry?.minEle !== null && activeTelemetry?.maxEle !== null && (
+                                        <div className="flex justify-between border-b border-neutral-300 pb-1">
+                                            <span className="text-neutral-600 font-bold">ВЫСОТЫ (MIN/MAX):</span>
+                                            <span className="font-extrabold">{activeTelemetry.minEle} м / {activeTelemetry.maxEle} м</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between">
+                                        <span className="text-neutral-600 font-bold">ИСТОЧНИК:</span>
+                                        <span className="font-extrabold truncate max-w-[200px]">
+                                            {currentTrack.isLocal ? 'Локальный файл с ПК' : currentTrack.file}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {currentTrack.description && (
+                                    <div className="text-xs text-neutral-800 leading-relaxed font-bold">
+                                        {currentTrack.description}
+                                    </div>
+                                )}
+
+                                {/* Modal Actions */}
+                                <div className="flex flex-wrap gap-2 pt-2">
+                                    <button
+                                        onClick={handleDownloadGpx}
+                                        className="brutal-btn flex-1 py-2 bg-[#FF5722] text-white font-extrabold uppercase text-xs flex items-center justify-center gap-1.5"
+                                    >
+                                        <i className="fa-solid fa-download"></i> СКАЧАТЬ .GPX
+                                    </button>
+                                    <button
+                                        onClick={() => setShowStatsModal(false)}
+                                        className="brutal-btn px-4 py-2 bg-black text-white font-extrabold uppercase text-xs"
+                                    >
+                                        ЗАКРЫТЬ
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </section>
+            );
+        };
+
         const CommandPalette = ({ isOpen, onClose, actions }) => {
             const [query, setQuery] = useState('');
             const inputRef = useRef(null);
@@ -2852,6 +3809,36 @@
             );
         };
 
+        const INITIAL_TRACKS = [
+            {
+                id: "ride-2026-08-route3-night-city",
+                title: "Ночной урбан-заезд",
+                date: "2026-08-09",
+                file: "tracks/route3-night-city.gpx",
+                description: "Пустые ночные проспекты, мосты и кольцевые развязки",
+                tags: ["urban", "night"],
+                telemetry: { distanceKm: 15.7, elevationGainM: 126, movingTime: "1ч 10м" }
+            },
+            {
+                id: "ride-2026-07-route2-river",
+                title: "Набережная и дамба",
+                date: "2026-07-22",
+                file: "tracks/route2-river.gpx",
+                description: "Скоростной асфальтовый заезд вдоль реки и набережных",
+                tags: ["scenic", "speed", "asphalt"],
+                telemetry: { distanceKm: 14.9, elevationGainM: 24, movingTime: "1ч 8м" }
+            },
+            {
+                id: "ride-2026-06-route1-forest",
+                title: "Лесной маршрут",
+                date: "2026-06-15",
+                file: "tracks/route1-forest.gpx",
+                description: "Грунты, лесные тропы и полевые участки вдоль бора",
+                tags: ["forest", "gravel"],
+                telemetry: { distanceKm: 15.7, elevationGainM: 175, movingTime: "1ч 10м" }
+            }
+        ];
+
         const App = () => {
             const [sfxEnabled, setSfxEnabled] = useState(true);
             const [darkMode, setDarkMode] = useState(false);
@@ -2861,6 +3848,7 @@
             const [adminModalOpen, setAdminModalOpen] = useState(false);
             const [visitorCount, setVisitorCount] = useState(1428);
             const [activeSection, setActiveSection] = useState('HOME');
+            const [tracks, setTracks] = useState(INITIAL_TRACKS);
 
             const [isAdmin, setIsAdmin] = useState(() => {
                 try {
@@ -3035,8 +4023,27 @@
                     }
                 };
 
+                const loadTracksManifest = async () => {
+                    const endpoints = ['./tracks.json', 'tracks.json', './public/tracks.json', '/tracks.json'];
+                    for (const url of endpoints) {
+                        try {
+                            const res = await fetch(`${url}?t=${Date.now()}`);
+                            if (!res.ok) continue;
+                            const data = await res.json();
+                            if (Array.isArray(data) && isMounted) {
+                                setTracks(data);
+                                break;
+                            }
+                        } catch (_) {}
+                    }
+                };
+
                 loadServerDatabase();
-                const syncInterval = setInterval(loadServerDatabase, 15000);
+                loadTracksManifest();
+                const syncInterval = setInterval(() => {
+                    loadServerDatabase();
+                    loadTracksManifest();
+                }, 15000);
                 return () => {
                     isMounted = false;
                     clearInterval(syncInterval);
@@ -3170,6 +4177,14 @@
                     run: () => {
                         setActiveSection('WIKI');
                         notify("ПЕРЕКЛЮЧЕНО НА ВИКИ СРП");
+                    }
+                },
+                {
+                    label: "Открыть карту маршрутов (GPX Viewer)",
+                    cmd: "view --tracks",
+                    run: () => {
+                        setActiveSection('TRACKS');
+                        notify("ОТКРЫТА КАРТА МАРШРУТОВ // GPX");
                     }
                 },
                 {
@@ -3361,6 +4376,7 @@
                         <div className="flex flex-wrap items-center gap-2">
                             {[
                                 { id: 'HOME', label: 'ГЛАВНАЯ // МУЗЫКА И СОЦСЕТИ', icon: 'fa-compact-disc' },
+                                { id: 'TRACKS', label: `МАРШРУТЫ // GPX (${tracks.length})`, icon: 'fa-map-location-dot' },
                                 { id: 'PHOTOS', label: `ФОТОАРХИВ (${photos.length})`, icon: 'fa-camera-retro' },
                                 { id: 'WIKI', label: `ВИКИ СРП (${wikiArticles.length})`, icon: 'fa-book-journal-whills' },
                                 { id: 'TOOLS', label: 'ТЕРМИНАЛ УТИЛИТ', icon: 'fa-screwdriver-wrench' }
@@ -3514,7 +4530,34 @@
                                 />
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8 font-mono">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8 font-mono">
+                                <div
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setActiveSection('TRACKS');
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    onMouseEnter={() => sfx.playHover()}
+                                    className="brutal-card brutal-card-interactive bg-[#FF5722] text-white p-5 cursor-pointer flex flex-col justify-between group"
+                                >
+                                    <div>
+                                        <div className="flex items-center justify-between text-xs font-extrabold uppercase mb-2">
+                                            <span className="bg-black text-[#CCFF00] px-2 py-0.5">GPS // КАРТЫ</span>
+                                            <span className="border-2 border-black bg-white text-black px-2 py-0.5">{tracks.length} ТРЕКОВ</span>
+                                        </div>
+                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2 text-white">
+                                            МАРШРУТЫ GPX →
+                                        </h3>
+                                        <p className="text-xs font-bold text-neutral-100 line-clamp-2">
+                                            Интерактивная карта заездов, телеметрия высот, скоростные треки и Drag & Drop.
+                                        </p>
+                                    </div>
+                                    <div className="mt-4 pt-3 border-t-2 border-black flex items-center justify-between text-xs font-extrabold">
+                                        <span>ОТКРЫТЬ КАРТУ</span>
+                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                                    </div>
+                                </div>
+
                                 <div
                                     onClick={() => {
                                         sfx.playClick();
@@ -3576,7 +4619,7 @@
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     onMouseEnter={() => sfx.playHover()}
-                                    className="brutal-card brutal-card-interactive bg-[#F4F0EA] p-5 cursor-pointer flex flex-col justify-between group sm:col-span-2 lg:col-span-1"
+                                    className="brutal-card brutal-card-interactive bg-[#F4F0EA] p-5 cursor-pointer flex flex-col justify-between group"
                                 >
                                     <div>
                                         <div className="flex items-center justify-between text-xs font-extrabold uppercase mb-2">
@@ -3597,6 +4640,31 @@
                                 </div>
                             </div>
                         </>
+                    )}
+
+                    {activeSection === 'TRACKS' && (
+                        <div className="mb-8">
+                            <div className="flex items-center justify-between mb-4 font-mono text-xs">
+                                <button
+                                    onClick={() => {
+                                        sfx.playClick();
+                                        setActiveSection('HOME');
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    className="brutal-btn bg-black text-[#CCFF00] px-3.5 py-1.5 font-extrabold flex items-center gap-2"
+                                >
+                                    <i className="fa-solid fa-arrow-left"></i> НА ГЛАВНУЮ (МУЗЫКА И СОЦСЕТИ)
+                                </button>
+                                <span className="text-neutral-600 font-bold hidden sm:inline">
+                                    РАЗДЕЛ: КАРТА И АРХИВ МАРШРУТОВ ({tracks.length} ТРЕКОВ)
+                                </span>
+                            </div>
+                            <GpxRouteArchive
+                                tracks={tracks}
+                                notify={notify}
+                                darkMode={darkMode}
+                            />
+                        </div>
                     )}
 
                     {activeSection === 'PHOTOS' && (
