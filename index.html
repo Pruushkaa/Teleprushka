@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <!-- Primary Meta Tags -->
     <title>Pruushkaa | Портфолио &amp; Цифровой Архив</title>
     <meta name="title" content="Pruushkaa | Портфолио &amp; Цифровой Архив" />
     <meta name="description" content="Личный сайт: интерактивные GPX-маршруты, музыкальная аналитика Last.fm (40,000+ скробблов), пет-проекты и цифровой архив." />
@@ -37,6 +36,7 @@
 
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="assets/js/tailwind-config.js"></script>
 
     <!-- Google Fonts: Space Grotesk & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,12 +47,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 
     <!-- Static Application Config (Teleprushka) -->
-    <script src="./config.js"></script>
-    <!-- Shared Brutalist Design System & Styles -->
-    <link rel="stylesheet" href="./archive.css" />
-
-    <!-- Marked Markdown Parser -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="config.js"></script>
 
     <!-- Leaflet & leaflet-gpx Map Engine -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
@@ -63,30 +58,12 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['"Space Grotesk"', 'sans-serif'],
-                        mono: ['"JetBrains Mono"', 'monospace'],
-                    },
-                    colors: {
-                        archive: {
-                            bg: '#F4F0EA',
-                            orange: '#FF5722',
-                            lime: '#CCFF00',
-                            cyan: '#00E5FF',
-                            violet: '#B388FF',
-                            dark: '#121212'
-                        }
-                    }
-                }
-            }
-        };
-    </script>
+    <!-- Общий код сайта: ядро (звук, глитч-фон, утилиты) и расчёт телеметрии GPX -->
+    <script src="assets/js/archive-core.js"></script>
+    <script src="assets/js/gpx-utils.js"></script>
 
-    <!-- Shared brutalist styles loaded via ./archive.css -->
+    <!-- Единые базовые стили дизайн-системы -->
+    <link rel="stylesheet" href="assets/css/base.css" />
 </head>
 <body class="min-h-screen relative selection:bg-[#FF5722] selection:text-white">
 
@@ -109,104 +86,13 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-        /* ===============================================/* ==========================================================================
-           STATIC CONFIGURATION & SHARED UTILITIES (FROM CONFIG.JS)
-           ========================================================================== */
-        const CONFIG = (typeof window !== 'undefined' && window.APP_CONFIG) ? window.APP_CONFIG : {};
-        const ARCHIVE_CONFIG = CONFIG;
+        const {
+            CONFIG, SoundEngine, GlitchCanvas, triggerGlitchSpike, copyTextToClipboard,
+            downloadFile, downloadUrl, formatClock, fetchFirstJson, fetchItunesPreview
+        } = window.ArchiveCore;
+        const { calculateTelemetry: calculateGpxTelemetry, formatDuration } = window.GpxUtils;
 
-        const sfx = (typeof window !== 'undefined' && window.APP_UTILS?.sfx) || {
-            playHover: () => {},
-            playClick: () => {},
-            playSuccess: () => {},
-            playWarning: () => {}
-        };
-        const triggerGlitchSpike = (typeof window !== 'undefined' && window.APP_UTILS?.triggerGlitchSpike) || (() => {});
-        const copyTextToClipboard = (typeof window !== 'undefined' && window.APP_UTILS?.copyTextToClipboard) || (() => Promise.resolve(false));
-
-        const GlitchCanvas = ({ darkMode }) => {
-            const canvasRef = useRef(null);
-            const spikeRef = useRef(0);
-
-            useEffect(() => {
-                const canvas = canvasRef.current;
-                if (!canvas) return;
-                const ctx = canvas.getContext('2d');
-                let animationFrameId;
-
-                const handleResize = () => {
-                    canvas.width = window.innerWidth;
-                    canvas.height = window.innerHeight;
-                };
-                handleResize();
-                window.addEventListener('resize', handleResize);
-
-                const handleSpike = (e) => {
-                    spikeRef.current = (e.detail?.intensity || 1) * 18;
-                };
-                window.addEventListener('glitch-spike', handleSpike);
-
-                const render = () => {
-                    if (!document.hidden) {
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                        const gridSize = 48;
-                        ctx.strokeStyle = darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)';
-                        ctx.lineWidth = 1;
-
-                        for (let x = 0; x < canvas.width; x += gridSize) {
-                            ctx.beginPath();
-                            ctx.moveTo(x, 0);
-                            ctx.lineTo(x, canvas.height);
-                            ctx.stroke();
-                        }
-                        for (let y = 0; y < canvas.height; y += gridSize) {
-                            ctx.beginPath();
-                            ctx.moveTo(0, y);
-                            ctx.lineTo(canvas.width, y);
-                            ctx.stroke();
-                        }
-
-                        const isSpiking = spikeRef.current > 0;
-                        const chance = isSpiking ? 0.85 : 0.03;
-
-                        if (Math.random() < chance) {
-                            const count = isSpiking ? Math.ceil(spikeRef.current / 3) : 1;
-                            for (let i = 0; i < count; i++) {
-                                const gx = Math.random() * canvas.width;
-                                const gy = Math.random() * canvas.height;
-                                const gw = 40 + Math.random() * 220;
-                                const gh = 2 + Math.random() * 14;
-                                const colors = ['#FF5722', '#CCFF00', '#00E5FF', '#000000'];
-                                ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-                                ctx.globalAlpha = isSpiking ? 0.35 : 0.12;
-                                ctx.fillRect(gx, gy, gw, gh);
-                                ctx.globalAlpha = 1.0;
-                            }
-                        }
-
-                        if (spikeRef.current > 0) {
-                            spikeRef.current -= 1;
-                        }
-                    }
-                    animationFrameId = requestAnimationFrame(render);
-                };
-
-                render();
-                return () => {
-                    window.removeEventListener('resize', handleResize);
-                    window.removeEventListener('glitch-spike', handleSpike);
-                    cancelAnimationFrame(animationFrameId);
-                };
-            }, [darkMode]);
-
-            return (
-                <canvas
-                    ref={canvasRef}
-                    className="fixed inset-0 pointer-events-none z-0"
-                />
-            );
-        };
+        const sfx = new SoundEngine('main');
 
         const GENRE_GRADIENTS = {
             electronic: 'linear-gradient(135deg, #FF5722 0%, #FF8A65 50%, #FFD54F 100%)',
@@ -352,7 +238,7 @@
                 };
 
                 fetchLiveScrobble();
-                const pollTimer = setInterval(fetchLiveScrobble, ARCHIVE_CONFIG.LASTFM_POLL_INTERVAL_MS || 15000);
+                const pollTimer = setInterval(fetchLiveScrobble, CONFIG.LASTFM_POLL_INTERVAL_MS || 15000);
                 return () => {
                     isMounted = false;
                     clearInterval(pollTimer);
@@ -394,10 +280,7 @@
 
                 setLoadingSample(true);
                 try {
-                    const query = encodeURIComponent(`${currentTrack.artist} ${currentTrack.name}`);
-                    const res = await fetch(`https://itunes.apple.com/search?term=${query}&entity=song&limit=1`);
-                    const data = await res.json();
-                    const preview = data?.results?.[0]?.previewUrl;
+                    const preview = await fetchItunesPreview(currentTrack.artist, currentTrack.name);
 
                     if (preview) {
                         const audio = new Audio(preview);
@@ -416,12 +299,6 @@
                 } finally {
                     setLoadingSample(false);
                 }
-            };
-
-            const formatTime = (sec) => {
-                const m = Math.floor(sec / 60);
-                const s = Math.floor(sec % 60);
-                return `${m}:${s < 10 ? '0' : ''}${s}`;
             };
 
             const pct = Math.min(100, Math.round((progress / (currentTrack.duration || 180)) * 100));
@@ -595,8 +472,8 @@
                                     />
                                 </div>
                                 <div className="flex justify-between font-mono text-[11px] font-bold">
-                                    <span>{formatTime(progress)}</span>
-                                    <span>{ pct }% // {formatTime(currentTrack.duration)}</span>
+                                    <span>{formatClock(progress)}</span>
+                                    <span>{ pct }% // {formatClock(currentTrack.duration)}</span>
                                 </div>
                             </div>
                         </div>
@@ -772,7 +649,7 @@
                 };
 
                 fetchLanyard();
-                const timer = setInterval(fetchLanyard, ARCHIVE_CONFIG.DISCORD_POLL_INTERVAL_MS || 15000);
+                const timer = setInterval(fetchLanyard, CONFIG.DISCORD_POLL_INTERVAL_MS || 15000);
                 return () => {
                     isMounted = false;
                     clearInterval(timer);
@@ -883,7 +760,7 @@
 
                                 {!cleanId && (
                                     <div className="mt-2 text-[10px] bg-amber-100 border border-black p-1.5 text-black">
-                                        💡 <strong>Подсказка:</strong> Укажите ваш Discord ID в <code>ARCHIVE_CONFIG.DISCORD_USER_ID</code> для живого статуса.
+                                        💡 <strong>Подсказка:</strong> Укажите ваш Discord ID в <code>APP_CONFIG.DISCORD_USER_ID</code> (config.js) для живого статуса.
                                     </div>
                                 )}
                             </div>
@@ -1231,6 +1108,57 @@
             );
         };
 
+        /* ==========================================================================
+           ОБЩИЕ ХЕЛПЕРЫ ДАННЫХ (нормализация, даты, проверка прав)
+           ========================================================================== */
+        // Приводят фото/статьи из localStorage или database.json к единому виду
+        const normalizePhotos = (arr) => arr.map((p, idx) => ({
+            id: p.id || `IMG-0${idx + 1}`,
+            title: p.title || `КАДР // ${p.id || idx + 1}`,
+            category: p.category || 'ИРЛ / АРХИВ',
+            date: p.date || (p.createdAt ? new Date(Number(p.createdAt)).toISOString().slice(0, 7).replace('-', '.') : '2026.02'),
+            src: p.src || p.url || '',
+            url: p.url || p.src || '',
+            fallback: p.fallback || "https://placehold.co/600x600/FF5722/000000?text=PHOTO+ARCHIVE",
+            desc: p.desc || 'Архивный снимок из медиа-хранилища.'
+        }));
+
+        const normalizeWiki = (arr) => arr.map((a, idx) => ({
+            id: a.id || `SRP-0${idx + 1}`,
+            title: a.title || `СТАТЬЯ // ${a.id || idx + 1}`,
+            category: a.category || (idx === 0 ? 'ОСНОВНОЕ' : 'ИСТОРИЯ / ЛОР'),
+            updated: a.updated || '2026.02',
+            author: a.author || 'pruushkaa',
+            tags: Array.isArray(a.tags) ? a.tags : ['СРП', 'архив'],
+            content: a.content || ''
+        }));
+
+        // Список из localStorage (если там непустой массив), иначе — fallback; оба через normalize
+        const loadStoredList = (key, normalize, fallback) => {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(key));
+                if (Array.isArray(parsed) && parsed.length > 0) return normalize(parsed);
+            } catch (e) {}
+            return normalize(fallback);
+        };
+
+        // "2026-11-01"
+        const todayISO = () => new Date().toISOString().slice(0, 10);
+
+        // "my_ride-01.gpx" → "MY RIDE 01"
+        const gpxFileTitle = (fileName) => fileName.replace(/\.gpx$/i, '').replace(/[-_]+/g, ' ').toUpperCase();
+
+        // Уникальный id вида "<prefix>-<время>-<5 случайных символов>"
+        const uniqueId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+        // Не админ → предупреждение + окно входа, возвращает false
+        const requireAdmin = ({ isAdmin, notify, onOpenAdmin }, message) => {
+            if (isAdmin) return true;
+            notify(message, "warn");
+            onOpenAdmin();
+            return false;
+        };
+
         const INITIAL_PHOTOS = [
             {
                 id: "IMG-01",
@@ -1293,11 +1221,7 @@
 
             const handleAddPhoto = (e) => {
                 e.preventDefault();
-                if (!isAdmin) {
-                    notify("ДОСТУП ЗАПРЕЩЕН: ТРЕБУЕТСЯ ПАРОЛЬ АДМИНА", "warn");
-                    onOpenAdmin();
-                    return;
-                }
+                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ДОСТУП ЗАПРЕЩЕН: ТРЕБУЕТСЯ ПАРОЛЬ АДМИНА")) return;
                 if (!newSrc.trim() || !newTitle.trim()) {
                     notify("УКАЖИ НАЗВАНИЕ И ВЫБЕРИ ФАЙЛ ИЛИ URL", "warn");
                     return;
@@ -1327,11 +1251,7 @@
             };
 
             const handleDeletePhoto = (id) => {
-                if (!isAdmin) {
-                    notify("ТОЛЬКО АДМИНИСТРАТОР МОЖЕТ УДАЛЯТЬ КАДРЫ", "warn");
-                    onOpenAdmin();
-                    return;
-                }
+                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ТОЛЬКО АДМИНИСТРАТОР МОЖЕТ УДАЛЯТЬ КАДРЫ")) return;
                 sfx.playClick();
                 const updated = photos.filter(p => p.id !== id);
                 setPhotos(updated);
@@ -1895,11 +1815,7 @@
             }, [articles, selectedId, filteredArticles]);
 
             const startEditCurrent = () => {
-                if (!isAdmin) {
-                    notify("ВВЕДИ ПАРОЛЬ АДМИНА ДЛЯ РЕДАКТИРОВАНИЯ СТАТЕЙ", "warn");
-                    onOpenAdmin();
-                    return;
-                }
+                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ВВЕДИ ПАРОЛЬ АДМИНА ДЛЯ РЕДАКТИРОВАНИЯ СТАТЕЙ")) return;
                 if (!currentArticle) return;
                 sfx.playClick();
                 setFormTitle(currentArticle.title);
@@ -1911,11 +1827,7 @@
             };
 
             const startCreateNew = () => {
-                if (!isAdmin) {
-                    notify("ВВЕДИ ПАРОЛЬ АДМИНА ДЛЯ СОЗДАНИЯ СТАТЕЙ", "warn");
-                    onOpenAdmin();
-                    return;
-                }
+                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ВВЕДИ ПАРОЛЬ АДМИНА ДЛЯ СОЗДАНИЯ СТАТЕЙ")) return;
                 sfx.playClick();
                 setFormTitle('');
                 setFormCategory('ОСНОВНОЕ');
@@ -1927,16 +1839,12 @@
 
             const handleSaveArticle = (e) => {
                 e.preventDefault();
-                if (!isAdmin) {
-                    notify("ДОСТУП ЗАПРЕЩЕН: НУЖЕН ПАРОЛЬ АДМИНА", "warn");
-                    onOpenAdmin();
-                    return;
-                }
+                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ДОСТУП ЗАПРЕЩЕН: НУЖЕН ПАРОЛЬ АДМИНА")) return;
                 if (!formTitle.trim() || !formContent.trim()) {
                     notify("ЗАПОЛНИ ЗАГОЛОВОК И ТЕКСТ СТАТЬИ!", "warn");
                     return;
                 }
-                const today = new Date().toISOString().slice(0, 10);
+                const today = todayISO();
                 const parsedTags = formTags
                     .split(',')
                     .map(t => t.trim())
@@ -1983,11 +1891,7 @@
             };
 
             const handleDeleteArticle = (id) => {
-                if (!isAdmin) {
-                    notify("УДАЛЕНИЕ ДОСТУПНО ТОЛЬКО АДМИНУ", "warn");
-                    onOpenAdmin();
-                    return;
-                }
+                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "УДАЛЕНИЕ ДОСТУПНО ТОЛЬКО АДМИНУ")) return;
                 if (articles.length <= 1) {
                     notify("НЕЛЬЗЯ УДАЛИТЬ ПОСЛЕДНЮЮ СТАТЬЮ ВИКИ!", "warn");
                     return;
@@ -2383,7 +2287,7 @@
                 }
                 // Проверяем актуальный пароль на сервере
                 try {
-                    const res = (!window.location.hostname.includes("github.io") && window.location.protocol !== "file:") ? await fetch(`./api/data?t=${Date.now()}`) : { ok: false };
+                    const res = await fetch(`/api/data?t=${Date.now()}`);
                     if (res.ok) {
                         const srv = await res.json();
                         const srvPass = (srv.adminPass || 'admin').trim();
@@ -2678,6 +2582,17 @@
             }
         };
 
+        // Где искать манифест маршрутов (первый — основной, его пишет scripts/sync-tracks.mjs)
+        const TRACK_MANIFEST_URLS = [
+            './public/tracks/manifest.json',
+            'public/tracks/manifest.json',
+            './tracks/manifest.json',
+            'tracks/manifest.json',
+            './tracks.json',
+            'tracks.json',
+            './public/tracks.json'
+        ];
+
         const persistAllTracks = async (trackList) => {
             if (!Array.isArray(trackList)) return;
             // 1. IndexedDB - handles unlimited gigabytes of GPX XML without QuotaExceededError
@@ -2726,48 +2641,6 @@
             const markersLayerRef = useRef(null);
             const fileInputRef = useRef(null);
             const adminFileInputRef = useRef(null);
-
-            // Calculate telemetry helper for raw XML
-            const calculateGpxTelemetry = (xml) => {
-                const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"[^>]*>([\s\S]*?)<\/trkpt>/gi;
-                let match;
-                const points = [];
-                while ((match = trkptRegex.exec(xml)) !== null) {
-                    const lat = parseFloat(match[1]);
-                    const lon = parseFloat(match[2]);
-                    const inner = match[3];
-                    const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/i);
-                    const timeMatch = inner.match(/<time>([^<]+)<\/time>/i);
-                    const ele = eleMatch ? parseFloat(eleMatch[1]) : null;
-                    const time = timeMatch ? new Date(timeMatch[1]).getTime() : null;
-                    if (!isNaN(lat) && !isNaN(lon)) points.push({ lat, lon, ele, time });
-                }
-                if (points.length < 2) return null;
-                let totalDist = 0;
-                let elevationGain = 0;
-                const toRad = x => (x * Math.PI) / 180;
-                for (let i = 1; i < points.length; i++) {
-                    const p1 = points[i - 1];
-                    const p2 = points[i];
-                    const dLat = toRad(p2.lat - p1.lat);
-                    const dLon = toRad(p2.lon - p1.lon);
-                    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(toRad(p1.lat)) * Math.cos(toRad(p2.lat)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-                    totalDist += 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                    if (p1.ele !== null && p2.ele !== null && p2.ele > p1.ele) elevationGain += (p2.ele - p1.ele);
-                }
-                let movingTimeStr = '--';
-                if (points[0].time && points[points.length - 1].time) {
-                    const totalSec = Math.round((points[points.length - 1].time - points[0].time) / 1000);
-                    const h = Math.floor(totalSec / 3600);
-                    const m = Math.floor((totalSec % 3600) / 60);
-                    movingTimeStr = h > 0 ? `${h}ч ${m}м` : `${m}м`;
-                }
-                return {
-                    distanceKm: parseFloat((totalDist / 1000).toFixed(1)),
-                    elevationGainM: Math.round(elevationGain),
-                    movingTime: movingTimeStr
-                };
-            };
 
             // Combine local preview tracks with repository manifest
             const allTracks = useMemo(() => {
@@ -3024,11 +2897,7 @@
                             ? g.get_moving_speed() * 3.6
                             : (distM > 0 && moveMs > 0 ? ((distM / 1000) / (moveMs / 3600000)) : 0);
 
-                        const totalSec = Math.round(moveMs / 1000);
-                        const h = Math.floor(totalSec / 3600);
-                        const m = Math.floor((totalSec % 3600) / 60);
-                        const s = totalSec % 60;
-                        const formattedTime = h > 0 ? `${h}ч ${m}м` : (m > 0 ? `${m}м ${s}с` : `${s}с`);
+                        const formattedTime = formatDuration(Math.round(moveMs / 1000), true);
 
                         const telemetry = {
                             distanceKm: (distM / 1000).toFixed(1),
@@ -3097,13 +2966,13 @@
                 for (const file of gpxList) {
                     try {
                         const text = await file.text();
-                        const cleanTitle = file.name.replace(/\.gpx$/i, '').replace(/[-_]+/g, ' ').toUpperCase();
-                        const today = new Date().toISOString().slice(0, 10);
-                        const uniqueId = `preview-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+                        const cleanTitle = gpxFileTitle(file.name);
+                        const today = todayISO();
+                        const previewId = uniqueId('preview');
                         const stats = calculateGpxTelemetry(text);
 
                         newPreviewList.push({
-                            id: uniqueId,
+                            id: previewId,
                             title: cleanTitle,
                             date: today,
                             file: null,
@@ -3163,18 +3032,9 @@
                 if (!currentTrack) return;
                 sfx.playSuccess();
                 if (currentTrack.rawGpx) {
-                    const blob = new Blob([currentTrack.rawGpx], { type: 'application/gpx+xml' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${currentTrack.id}.gpx`;
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    downloadFile(currentTrack.rawGpx, `${currentTrack.id}.gpx`, 'application/gpx+xml');
                 } else if (currentTrack.file) {
-                    const a = document.createElement('a');
-                    a.href = currentTrack.file;
-                    a.download = `${currentTrack.id}.gpx`;
-                    a.click();
+                    downloadUrl(currentTrack.file, `${currentTrack.id}.gpx`);
                 }
                 notify(`СКАЧИВАНИЕ .GPX [${currentTrack.title}]...`);
             };
@@ -3200,11 +3060,11 @@
                     const stats = calculateGpxTelemetry(xml);
                     if (stats) setFormTelemetry(stats);
                     if (!formTitle) {
-                        const baseName = file.name.replace(/\.gpx$/i, '').replace(/[-_]+/g, ' ').toUpperCase();
+                        const baseName = gpxFileTitle(file.name);
                         setFormTitle(baseName);
                     }
                     if (!formDate) {
-                        setFormDate(new Date().toISOString().slice(0, 10));
+                        setFormDate(todayISO());
                     }
                     notify("GPX ФАЙЛ СЧИТАН И ТЕЛЕМЕТРИЯ РАССЧИТАНА!");
                 };
@@ -3214,21 +3074,17 @@
             // Admin: Save new route into current session tracks
             const handleSaveNewRoute = async (e) => {
                 e.preventDefault();
-                if (!isAdmin) {
-                    notify("ДОСТУП ЗАПРЕЩЕН: ТРЕБУЕТСЯ ПАРОЛЬ АДМИНИСТРАТОРА", "warn");
-                    onOpenAdmin();
-                    return;
-                }
+                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ДОСТУП ЗАПРЕЩЕН: ТРЕБУЕТСЯ ПАРОЛЬ АДМИНИСТРАТОРА")) return;
                 if (!formTitle.trim() || !formGpxRaw.trim()) {
                     notify("УКАЖИТЕ НАЗВАНИЕ И ВЫБЕРИТЕ .GPX ФАЙЛ!", "warn");
                     return;
                 }
-                const safeId = `ride-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+                const safeId = uniqueId('ride');
                 const parsedTags = formTags.split(',').map(t => t.trim()).filter(Boolean);
                 const createdTrack = {
                     id: safeId,
                     title: formTitle.trim(),
-                    date: formDate || new Date().toISOString().slice(0, 10),
+                    date: formDate || todayISO(),
                     file: `public/tracks/${safeId}.gpx`,
                     rawGpx: formGpxRaw,
                     description: formDesc.trim() || 'Маршрут добавлен через панель управления',
@@ -3287,13 +3143,7 @@
                     tags: t.tags || [],
                     telemetry: t.telemetry || null
                 }));
-                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'manifest.json';
-                a.click();
-                URL.revokeObjectURL(url);
+                downloadFile(JSON.stringify(exportData, null, 2), 'manifest.json', 'application/json');
                 notify("МАНИФЕСТ СКАЧАН! ЗАМЕНИТЕ В PUBLIC/TRACKS/ И СДЕЛАЙТЕ GIT PUSH");
             };
 
@@ -3301,18 +3151,16 @@
             const handleResetTracksToDefault = async () => {
                 sfx.playClick();
                 setLocalPreviewTracks([]);
-                try {
-                    const res = await fetch(`public/tracks/manifest.json?t=${Date.now()}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (Array.isArray(data) && data.length > 0) {
-                            setTracks(data);
-                            setSelectedTrackId(data[0]?.id || null);
-                            notify("МАРШРУТЫ ПЕРЕЗАГРУЖЕНЫ ИЗ РЕПОЗИТОРИЯ");
-                            return;
-                        }
-                    }
-                } catch (_) {}
+                const data = await fetchFirstJson(
+                    [`${TRACK_MANIFEST_URLS[0]}?t=${Date.now()}`],
+                    { accept: (json) => Array.isArray(json) && json.length > 0 }
+                );
+                if (data) {
+                    setTracks(data);
+                    setSelectedTrackId(data[0]?.id || null);
+                    notify("МАРШРУТЫ ПЕРЕЗАГРУЖЕНЫ ИЗ РЕПОЗИТОРИЯ");
+                    return;
+                }
                 setTracks(INITIAL_TRACKS);
                 setSelectedTrackId(INITIAL_TRACKS[0]?.id || null);
                 notify("МАРШРУТЫ СБРОШЕНЫ К ИСХОДНЫМ");
@@ -4147,9 +3995,9 @@
 
             const [adminPass, setAdminPass] = useState(() => {
                 try {
-                    return localStorage.getItem('pruushkaa_admin_pass') || ARCHIVE_CONFIG.DEFAULT_ADMIN_PASSWORD;
+                    return localStorage.getItem('pruushkaa_admin_pass') || CONFIG.DEFAULT_ADMIN_PASSWORD;
                 } catch (e) {
-                    return ARCHIVE_CONFIG.DEFAULT_ADMIN_PASSWORD;
+                    return CONFIG.DEFAULT_ADMIN_PASSWORD;
                 }
             });
 
@@ -4178,50 +4026,9 @@
             const [discordText, setDiscordText] = useState(CONFIG.DEFAULT_DISCORD_TEXT || 'Автономный режим');
             const [discordId, setDiscordId] = useState(CONFIG.DISCORD_USER_ID || '655742532772429834');
 
-            const [photos, setPhotos] = useState(() => {
-                const normalizeList = (arr) => arr.map((p, idx) => ({
-                    id: p.id || `IMG-0${idx + 1}`,
-                    title: p.title || `КАДР // ${p.id || idx + 1}`,
-                    category: p.category || 'ИРЛ / АРХИВ',
-                    date: p.date || (p.createdAt ? new Date(Number(p.createdAt)).toISOString().slice(0, 7).replace('-', '.') : '2026.02'),
-                    src: p.src || p.url || '',
-                    url: p.url || p.src || '',
-                    fallback: p.fallback || "https://placehold.co/600x600/FF5722/000000?text=PHOTO+ARCHIVE",
-                    desc: p.desc || 'Архивный снимок из медиа-хранилища.'
-                }));
-                try {
-                    const saved = localStorage.getItem('pruushkaa_photos_v2');
-                    if (saved) {
-                        const parsed = JSON.parse(saved);
-                        if (Array.isArray(parsed) && parsed.length > 0) {
-                            return normalizeList(parsed);
-                        }
-                    }
-                } catch (e) {}
-                return normalizeList(INITIAL_PHOTOS);
-            });
+            const [photos, setPhotos] = useState(() => loadStoredList('pruushkaa_photos_v2', normalizePhotos, INITIAL_PHOTOS));
 
-            const [wikiArticles, setWikiArticles] = useState(() => {
-                const normalizeWiki = (arr) => arr.map((a, idx) => ({
-                    id: a.id || `SRP-0${idx + 1}`,
-                    title: a.title || `СТАТЬЯ // ${a.id || idx + 1}`,
-                    category: a.category || (idx === 0 ? 'ОСНОВНОЕ' : 'ИСТОРИЯ / ЛОР'),
-                    updated: a.updated || '2026.02',
-                    author: a.author || 'pruushkaa',
-                    tags: Array.isArray(a.tags) ? a.tags : ['СРП', 'архив'],
-                    content: a.content || ''
-                }));
-                try {
-                    const saved = localStorage.getItem('pruushkaa_wiki_v2');
-                    if (saved) {
-                        const parsed = JSON.parse(saved);
-                        if (Array.isArray(parsed) && parsed.length > 0) {
-                            return normalizeWiki(parsed);
-                        }
-                    }
-                } catch (e) {}
-                return normalizeWiki(INITIAL_WIKI_ARTICLES);
-            });
+            const [wikiArticles, setWikiArticles] = useState(() => loadStoredList('pruushkaa_wiki_v2', normalizeWiki, INITIAL_WIKI_ARTICLES));
 
             const discordTag = "pruushkaa";
 
@@ -4238,112 +4045,69 @@
                 const loadServerDatabase = async () => {
                     if (window.location.protocol === 'file:') return;
                     const bust = `t=${Date.now()}`;
-                    const endpoints = [`./database.json?${bust}`, `database.json?${bust}`];
-                    if (!window.location.hostname.includes("github.io") && window.location.protocol !== "file:") endpoints.push(`./api/data?${bust}`);
-                    for (const url of endpoints) {
-                        try {
-                            const res = await fetch(url, {
-                                cache: 'no-store',
-                                headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
-                            });
-                            if (!res.ok) continue;
-                            const data = await res.json();
-                            if (data && isMounted) {
-                                if (Array.isArray(data.photos)) {
-                                    const normalizeList = (arr) => arr.map((p, idx) => ({
-                                        id: p.id || `IMG-0${idx + 1}`,
-                                        title: p.title || `КАДР // ${p.id || idx + 1}`,
-                                        category: p.category || 'ИРЛ / АРХИВ',
-                                        date: p.date || (p.createdAt ? new Date(Number(p.createdAt)).toISOString().slice(0, 7).replace('-', '.') : '2026.02'),
-                                        src: p.src || p.url || '',
-                                        url: p.url || p.src || '',
-                                        fallback: p.fallback || "https://placehold.co/600x600/FF5722/000000?text=PHOTO+ARCHIVE",
-                                        desc: p.desc || 'Архивный снимок из медиа-хранилища.'
-                                    }));
-                                    const normalized = normalizeList(data.photos);
-                                    setPhotos(normalized);
-                                    try { localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(normalized)); } catch (e) {}
-                                }
-                                const serverWiki = Array.isArray(data.wiki)
-                                    ? data.wiki
-                                    : (Array.isArray(data.articles) ? data.articles : null);
-                                if (serverWiki) {
-                                    const normalizeWiki = (arr) => arr.map((a, idx) => ({
-                                        id: a.id || `SRP-0${idx + 1}`,
-                                        title: a.title || `СТАТЬЯ // ${a.id || idx + 1}`,
-                                        category: a.category || (idx === 0 ? 'ОСНОВНОЕ' : 'ИСТОРИЯ / ЛОР'),
-                                        updated: a.updated || '2026.02',
-                                        author: a.author || 'pruushkaa',
-                                        tags: Array.isArray(a.tags) ? a.tags : ['СРП', 'архив'],
-                                        content: a.content || ''
-                                    }));
-                                    const normalizedW = normalizeWiki(serverWiki);
-                                    setWikiArticles(normalizedW);
-                                    try { localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(normalizedW)); } catch (e) {}
-                                }
-                                if (Array.isArray(data.tracks) && data.tracks.length > 0) {
-                                    const isUserModified = localStorage.getItem('pruushkaa_tracks_user_modified') === 'true';
-                                    if (!isUserModified) {
-                                        setTracks(data.tracks);
-                                        persistAllTracks(data.tracks);
-                                    }
-                                }
-                                if (data.adminPass) {
-                                    setAdminPass(data.adminPass);
-                                    try { localStorage.setItem('pruushkaa_admin_pass', data.adminPass); } catch (e) {}
-                                }
-                                if (data.lastFmApiKey !== undefined && data.lastFmApiKey !== '') {
-                                    setLastFmApiKey(data.lastFmApiKey);
-                                }
-                                if (data.lastFmUser && data.lastFmUser !== '') {
-                                    setLastFmUser(data.lastFmUser);
-                                }
-                                if (data.discord) {
-                                    if (data.discord.status) {
-                                        setDiscordStatus(data.discord.status);
-                                    }
-                                    if (data.discord.text) {
-                                        setDiscordText(data.discord.text);
-                                    }
-                                    const dId = data.discord.discordId !== undefined ? data.discord.discordId : data.discord.id;
-                                    if (dId !== undefined && dId !== '') {
-                                        setDiscordId(dId);
-                                    }
-                                } else if (data.discordStatus) {
-                                    setDiscordText(data.discordStatus);
-                                }
-                                break;
-                            }
-                        } catch (err) {}
+                    const data = await fetchFirstJson(
+                        [`./database.json?${bust}`, `database.json?${bust}`, `/api/data?${bust}`, `/database.json?${bust}`],
+                        { init: { cache: 'no-store', headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' } }, accept: Boolean }
+                    );
+                    if (!data || !isMounted) return;
+                    if (Array.isArray(data.photos)) {
+                        const normalized = normalizePhotos(data.photos);
+                        setPhotos(normalized);
+                        try { localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(normalized)); } catch (e) {}
+                    }
+                    const serverWiki = Array.isArray(data.wiki)
+                        ? data.wiki
+                        : (Array.isArray(data.articles) ? data.articles : null);
+                    if (serverWiki) {
+                        const normalizedW = normalizeWiki(serverWiki);
+                        setWikiArticles(normalizedW);
+                        try { localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(normalizedW)); } catch (e) {}
+                    }
+                    if (Array.isArray(data.tracks) && data.tracks.length > 0) {
+                        const isUserModified = localStorage.getItem('pruushkaa_tracks_user_modified') === 'true';
+                        if (!isUserModified) {
+                            setTracks(data.tracks);
+                            persistAllTracks(data.tracks);
+                        }
+                    }
+                    if (data.adminPass) {
+                        setAdminPass(data.adminPass);
+                        try { localStorage.setItem('pruushkaa_admin_pass', data.adminPass); } catch (e) {}
+                    }
+                    if (data.lastFmApiKey !== undefined && data.lastFmApiKey !== '') {
+                        setLastFmApiKey(data.lastFmApiKey);
+                    }
+                    if (data.lastFmUser && data.lastFmUser !== '') {
+                        setLastFmUser(data.lastFmUser);
+                    }
+                    if (data.discord) {
+                        if (data.discord.status) {
+                            setDiscordStatus(data.discord.status);
+                        }
+                        if (data.discord.text) {
+                            setDiscordText(data.discord.text);
+                        }
+                        const dId = data.discord.discordId !== undefined ? data.discord.discordId : data.discord.id;
+                        if (dId !== undefined && dId !== '') {
+                            setDiscordId(dId);
+                        }
+                    } else if (data.discordStatus) {
+                        setDiscordText(data.discordStatus);
                     }
                 };
 
                 const loadTracksManifest = async () => {
-                    const endpoints = [
-                        './public/tracks/manifest.json',
-                        'public/tracks/manifest.json',
-                        './tracks/manifest.json',
-                        'tracks/manifest.json',
-                        './tracks.json',
-                        'tracks.json',
-                        './public/tracks.json'
-                    ];
-                    for (const url of endpoints) {
-                        try {
-                            const res = await fetch(`${url}?t=${Date.now()}`);
-                            if (!res.ok) continue;
-                            const data = await res.json();
-                            if (Array.isArray(data) && data.length > 0 && isMounted) {
-                                setTracks(data);
-                                break;
-                            }
-                        } catch (_) {}
-                    }
+                    const bust = `?t=${Date.now()}`;
+                    const data = await fetchFirstJson(
+                        TRACK_MANIFEST_URLS.map((url) => url + bust),
+                        { accept: (json) => Array.isArray(json) && json.length > 0 }
+                    );
+                    if (data && isMounted) setTracks(data);
                 };
 
                 loadTracksManifest();
                 const syncInterval = setInterval(() => {
-                    loadServerDatabase();
+                    loadServerDatabase().catch(() => {});
                 }, 15000);
                 return () => {
                     isMounted = false;
@@ -4383,7 +4147,7 @@
                     }
                 } catch (e) {}
 
-                if (window.location.protocol === 'file:' || window.location.hostname.includes('github.io')) {
+                if (window.location.protocol === 'file:') {
                     notify("ВНИМАНИЕ: ОТКРЫТ ЛОКАЛЬНЫЙ ФАЙЛ (FILE://). СОХРАНЕНО В БРАУЗЕРЕ.", "info");
                     return;
                 }
@@ -4518,7 +4282,7 @@
                     label: "Открыть личный Телеграм",
                     cmd: "social --tg-dm",
                     run: () => {
-                        window.open(ARCHIVE_CONFIG.SOCIAL_LINKS.TELEGRAM_PERSONAL, '_blank', 'noopener,noreferrer');
+                        window.open(CONFIG.SOCIAL_LINKS.TELEGRAM_PERSONAL, '_blank', 'noopener,noreferrer');
                         notify("ОТКРЫВАЮ ЛИЧНЫЙ ТЕЛЕГРАМ...");
                     }
                 },
@@ -4526,7 +4290,7 @@
                     label: "Открыть Телеграм-канал",
                     cmd: "social --tg",
                     run: () => {
-                        window.open(ARCHIVE_CONFIG.SOCIAL_LINKS.TELEGRAM_CHANNEL, '_blank', 'noopener,noreferrer');
+                        window.open(CONFIG.SOCIAL_LINKS.TELEGRAM_CHANNEL, '_blank', 'noopener,noreferrer');
                         notify("ОТКРЫВАЮ ТЕЛЕГРАМ-КАНАЛ...");
                     }
                 },
@@ -4534,7 +4298,7 @@
                     label: "Открыть Steam профиль",
                     cmd: "social --steam",
                     run: () => {
-                        window.open(ARCHIVE_CONFIG.SOCIAL_LINKS.STEAM, '_blank', 'noopener,noreferrer');
+                        window.open(CONFIG.SOCIAL_LINKS.STEAM, '_blank', 'noopener,noreferrer');
                         notify("ОТКРЫВАЮ STEAM...");
                     }
                 },
@@ -4542,7 +4306,7 @@
                     label: "Открыть Twitter (X)",
                     cmd: "social --twitter",
                     run: () => {
-                        window.open(ARCHIVE_CONFIG.SOCIAL_LINKS.TWITTER, '_blank', 'noopener,noreferrer');
+                        window.open(CONFIG.SOCIAL_LINKS.TWITTER, '_blank', 'noopener,noreferrer');
                         notify("ОТКРЫВАЮ TWITTER...");
                     }
                 },
@@ -4742,13 +4506,7 @@
                                     wiki: wikiArticles,
                                     tracks
                                 }, null, 2);
-                                const blob = new Blob([dump], { type: 'application/json' });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = 'database.json';
-                                a.click();
-                                URL.revokeObjectURL(url);
+                                downloadFile(dump, 'database.json', 'application/json');
                                 notify("ПОЛНАЯ БАЗА DATABASE.JSON ВЫГРУЖЕНА!");
                             }}
                             onMouseEnter={() => sfx.playHover()}
@@ -4791,7 +4549,7 @@
 
                                     <div className="pt-4 border-t-2 border-black grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 font-mono text-xs">
                                         <a
-                                            href={ARCHIVE_CONFIG.SOCIAL_LINKS.TELEGRAM_PERSONAL}
+                                            href={CONFIG.SOCIAL_LINKS.TELEGRAM_PERSONAL}
                                             target="_blank"
                                             rel="noreferrer"
                                             onMouseEnter={() => sfx.playHover()}
@@ -4801,7 +4559,7 @@
                                             <i className="fa-solid fa-paper-plane text-sm"></i> ТЕЛЕГРАМ
                                         </a>
                                         <a
-                                            href={ARCHIVE_CONFIG.SOCIAL_LINKS.TELEGRAM_CHANNEL}
+                                            href={CONFIG.SOCIAL_LINKS.TELEGRAM_CHANNEL}
                                             target="_blank"
                                             rel="noreferrer"
                                             onMouseEnter={() => sfx.playHover()}
@@ -4811,7 +4569,7 @@
                                             <i className="fa-brands fa-telegram text-base"></i> ТГ КАНАЛ
                                         </a>
                                         <a
-                                            href={ARCHIVE_CONFIG.SOCIAL_LINKS.STEAM}
+                                            href={CONFIG.SOCIAL_LINKS.STEAM}
                                             target="_blank"
                                             rel="noreferrer"
                                             onMouseEnter={() => sfx.playHover()}
@@ -4821,7 +4579,7 @@
                                             <i className="fa-brands fa-steam text-base"></i> STEAM
                                         </a>
                                         <a
-                                            href={ARCHIVE_CONFIG.SOCIAL_LINKS.TWITTER}
+                                            href={CONFIG.SOCIAL_LINKS.TWITTER}
                                             target="_blank"
                                             rel="noreferrer"
                                             onMouseEnter={() => sfx.playHover()}
@@ -4831,7 +4589,7 @@
                                             <i className="fa-brands fa-x-twitter text-base"></i> TWITTER
                                         </a>
                                         <a
-                                            href={ARCHIVE_CONFIG.SOCIAL_LINKS.LASTFM}
+                                            href={CONFIG.SOCIAL_LINKS.LASTFM}
                                             target="_blank"
                                             rel="noreferrer"
                                             onMouseEnter={() => sfx.playHover()}
@@ -4845,7 +4603,7 @@
 
                                 <DiscordWidget
                                     discordId={discordId}
-                                    discordTag={ARCHIVE_CONFIG.DISCORD_TAG || "pruushkaa"}
+                                    discordTag={CONFIG.DISCORD_TAG || "pruushkaa"}
                                     isAdmin={isAdmin}
                                     onOpenAdmin={() => setAdminModalOpen(true)}
                                     notify={notify}

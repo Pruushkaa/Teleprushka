@@ -314,11 +314,6 @@ async function generate() {
             fs.mkdirSync(publicDir, { recursive: true });
         }
         
-        const altPublicDir = path.join(rootDir, 'pruushkaa_archive', 'public');
-        if (!fs.existsSync(altPublicDir)) {
-            fs.mkdirSync(altPublicDir, { recursive: true });
-        }
-
         // 1. Save pure SVG for vector use
         const svgPath = path.join(publicDir, 'og-image.svg');
         fs.writeFileSync(svgPath, svgContent, 'utf8');
@@ -337,13 +332,6 @@ async function generate() {
         fs.writeFileSync(pngPath, pngBuffer);
         fs.writeFileSync(path.join(rootDir, 'og-image.png'), pngBuffer);
         console.log(`✔ Generated OpenGraph PNG: ${pngPath} and root og-image.png (${(pngBuffer.length / 1024).toFixed(1)} KB) [1200x630]`);
-
-        // Mirror to pruushkaa_archive/public/og-image.png if exists
-        const altPngPath = path.join(altPublicDir, 'og-image.png');
-        fs.writeFileSync(altPngPath, pngBuffer);
-        const altSvgPath = path.join(altPublicDir, 'og-image.svg');
-        fs.writeFileSync(altSvgPath, svgContent, 'utf8');
-        console.log(`✔ Mirrored assets to ${altPngPath}`);
 
         console.log('[OG-GEN] OpenGraph generation complete! Status: OK.');
     } catch (err) {

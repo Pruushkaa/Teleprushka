@@ -1,151 +1,85 @@
+/**
+ * PRUUSHKAA // ARCHIVE BUILD & VALIDATION ENGINE
+ * Проверка перед деплоем: манифест и GPX, страницы, общие ассеты, данные, OpenGraph и синтаксис JSX.
+ */
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { rootDir, TRACKS_MANIFEST, DATA_DIR, PAGES, rel, validatePageJsx } from './lib/common.mjs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, '..');
+const fail = (msg) => {
+    console.error(`FAIL: ${msg}`);
+    process.exit(1);
+};
+const requireFile = (file) => {
+    if (!fs.existsSync(file)) fail(`${rel(file)} does not exist!`);
+    return file;
+};
 
 console.log('--- PRUUSHKAA ARCHIVE BUILD & VALIDATION ---');
 
-// 1. Verify tracks and manifest
-const tracksFile = path.join(rootDir, 'tracks.json');
-if (!fs.existsSync(tracksFile)) {
-    console.error('FAIL: tracks.json does not exist!');
-    process.exit(1);
-}
-const tracks = JSON.parse(fs.readFileSync(tracksFile, 'utf8'));
-console.log(`[VALIDATION] tracks.json OK (${tracks.length} tracks registered)`);
-
+// 1. Манифест маршрутов и GPX-файлы
+const tracks = JSON.parse(fs.readFileSync(requireFile(TRACKS_MANIFEST), 'utf8'));
+console.log(`[VALIDATION] ${rel(TRACKS_MANIFEST)} OK (${tracks.length} tracks registered)`);
 for (const t of tracks) {
-    if (t.file) {
-        const fullPath = path.join(rootDir, t.file);
-        if (!fs.existsSync(fullPath)) {
-            console.warn(`[WARN] Track file not found at ${t.file}`);
-        } else {
-            console.log(`  ✔ Validated route: ${t.title} (${t.file})`);
-        }
-    } else {
+    if (!t.file) {
         console.log(`  ✔ Validated inline/custom route: ${t.title}`);
+    } else if (!fs.existsSync(path.join(rootDir, t.file))) {
+        console.warn(`[WARN] Track file not found at ${t.file}`);
+    } else {
+        console.log(`  ✔ Validated route: ${t.title} (${t.file})`);
     }
 }
 
-// 2. Validate index.html
-const indexHtml = path.join(rootDir, 'index.html');
-if (!fs.existsSync(indexHtml)) {
-    console.error('FAIL: index.html does not exist!');
-    process.exit(1);
+// 2. Страницы и общие ассеты
+const pageContent = {};
+for (const page of PAGES) {
+    pageContent[page] = fs.readFileSync(requireFile(path.join(rootDir, page)), 'utf8');
+    console.log(`[VALIDATION] ${page} exists.`);
 }
-const indexContent = fs.readFileSync(indexHtml, 'utf8');
+for (const asset of [
+    'assets/css/base.css',
+    'assets/js/tailwind-config.js',
+    'assets/js/archive-core.js',
+    'assets/js/gpx-utils.js',
+    'assets/js/music-analytics.js',
+    'config.js',
+    '404.html'
+]) {
+    requireFile(path.join(rootDir, asset));
+}
+console.log('[VALIDATION] Shared assets (assets/, config.js, 404.html) OK.');
 
-if (!indexContent.includes('leaflet') || !indexContent.includes('leaflet-gpx')) {
+if (!pageContent['index.html'].includes('leaflet') || !pageContent['index.html'].includes('leaflet-gpx')) {
     console.warn('[WARN] Leaflet or leaflet-gpx may not be linked in index.html');
 } else {
     console.log('[VALIDATION] Leaflet and leaflet-gpx references found in index.html.');
 }
 
-// 3. Validate music.html
-const musicHtml = path.join(rootDir, 'music.html');
-if (!fs.existsSync(musicHtml)) {
-    console.error('FAIL: music.html does not exist!');
-    process.exit(1);
-}
-const musicContent = fs.readFileSync(musicHtml, 'utf8');
-console.log('[VALIDATION] music.html exists.');
-
-// 4. Validate data files
-const lastFmStatsFile = path.join(rootDir, 'public', 'data', 'lastfmstats-Pruushkaa.json');
-if (!fs.existsSync(lastFmStatsFile)) {
-    console.error('FAIL: lastfmstats-Pruushkaa.json does not exist in public/data!');
-    process.exit(1);
-}
-const statsSizeMb = (fs.statSync(lastFmStatsFile).size / (1024 * 1024)).toFixed(2);
-console.log(`[VALIDATION] public/data/lastfmstats-Pruushkaa.json OK (${statsSizeMb} MB).`);
-
-const musicSummaryFile = path.join(rootDir, 'public', 'data', 'music-summary.json');
-if (fs.existsSync(musicSummaryFile)) {
-    console.log('[VALIDATION] public/data/music-summary.json OK.');
+// 3. Данные музыкальной аналитики
+const statsFile = requireFile(path.join(DATA_DIR, 'lastfmstats-Pruushkaa.json'));
+console.log(`[VALIDATION] ${rel(statsFile)} OK (${(fs.statSync(statsFile).size / (1024 * 1024)).toFixed(2)} MB).`);
+for (const f of ['music-summary.json', 'music-summary.js']) {
+    if (fs.existsSync(path.join(DATA_DIR, f))) console.log(`[VALIDATION] public/data/${f} OK.`);
 }
 
-// 5. Validate JSX syntax with @babel/parser
-try {
-    const { parse } = await import('@babel/parser');
-    
-    // Index JSX check
-    const indexScriptMatch = indexContent.match(/<script type="text\/babel">([\s\S]*?)<\/script>/);
-    if (indexScriptMatch) {
-        parse(indexScriptMatch[1], { sourceType: 'module', plugins: ['jsx'] });
-        console.log('[VALIDATION] index.html JSX & Babel AST syntax verified 100% OK.');
-    }
-
-    // Music JSX check
-    const musicScriptMatch = musicContent.match(/<script type="text\/babel">([\s\S]*?)<\/script>/);
-    if (musicScriptMatch) {
-        parse(musicScriptMatch[1], { sourceType: 'module', plugins: ['jsx'] });
-        console.log('[VALIDATION] music.html JSX & Babel AST syntax verified 100% OK.');
-    }
-} catch (e) {
-    if (e.loc) {
-        console.error(`[ERROR] JSX Syntax error at line ${e.loc.line}, col ${e.loc.column}: ${e.message}`);
-        process.exit(1);
-    } else {
-        console.error(`[ERROR] JSX Parse error: ${e.message}`);
+// 4. Синтаксис JSX (@babel/parser)
+for (const page of PAGES) {
+    const result = await validatePageJsx(page);
+    if (!result.ok) {
+        console.error(`[ERROR] JSX Syntax error — ${result.message}`);
+        if (result.context) console.error(result.context);
         process.exit(1);
     }
+    console.log(`[VALIDATION] ${page} JSX & Babel AST syntax verified 100% OK.`);
 }
 
-// 6. Validate OpenGraph image
+// 5. OpenGraph ассеты
 const ogImagePath = path.join(rootDir, 'public', 'og-image.png');
 if (fs.existsSync(ogImagePath)) {
     const ogSizeKb = (fs.statSync(ogImagePath).size / 1024).toFixed(1);
     console.log(`[VALIDATION] public/og-image.png OK (${ogSizeKb} KB).`);
 } else {
     console.warn('[WARN] public/og-image.png does not exist! Running build:og is recommended.');
-}
-
-// 7. Mirror index.html to 404.html for GitHub Pages routing if needed
-const fourOhFour = path.join(rootDir, '404.html');
-fs.writeFileSync(fourOhFour, indexContent, 'utf8');
-console.log('[BUILD] Synchronized 404.html with index.html for GitHub Pages SPA fallback.');
-
-// 8. Mirror files to pruushkaa_archive/public
-const publicDir = path.join(rootDir, 'pruushkaa_archive', 'public');
-if (fs.existsSync(publicDir)) {
-    fs.writeFileSync(path.join(publicDir, 'index.html'), indexContent, 'utf8');
-    fs.writeFileSync(path.join(publicDir, '404.html'), indexContent, 'utf8');
-    fs.writeFileSync(path.join(publicDir, 'music.html'), musicContent, 'utf8');
-    if (fs.existsSync(tracksFile)) {
-        fs.writeFileSync(path.join(publicDir, 'tracks.json'), fs.readFileSync(tracksFile, 'utf8'), 'utf8');
-    }
-    const archiveCss = path.join(rootDir, 'archive.css');
-    if (fs.existsSync(archiveCss)) {
-        fs.copyFileSync(archiveCss, path.join(publicDir, 'archive.css'));
-    }
-    const configJs = path.join(rootDir, 'config.js');
-    if (fs.existsSync(configJs)) {
-        fs.copyFileSync(configJs, path.join(publicDir, 'config.js'));
-    }
-    if (fs.existsSync(ogImagePath)) {
-        fs.copyFileSync(ogImagePath, path.join(publicDir, 'og-image.png'));
-        const ogSvg = path.join(rootDir, 'public', 'og-image.svg');
-        if (fs.existsSync(ogSvg)) {
-            fs.copyFileSync(ogSvg, path.join(publicDir, 'og-image.svg'));
-        }
-    }
-    
-    // Mirror data folder
-    const targetDataDir = path.join(publicDir, 'data');
-    if (!fs.existsSync(targetDataDir)) {
-        fs.mkdirSync(targetDataDir, { recursive: true });
-    }
-    const sourceDataDir = path.join(rootDir, 'public', 'data');
-    if (fs.existsSync(sourceDataDir)) {
-        const files = fs.readdirSync(sourceDataDir);
-        for (const f of files) {
-            fs.copyFileSync(path.join(sourceDataDir, f), path.join(targetDataDir, f));
-        }
-    }
-    console.log('[BUILD] Synchronized public/ distribution folder with music.html, og-image.png and data/.');
 }
 
 console.log('--- BUILD COMPLETE (STATUS: OK) ---');

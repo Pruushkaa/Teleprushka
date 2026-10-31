@@ -1,3 +1,8 @@
+/**
+ * PRUUSHKAA_ARCHIVE — локальный бэкенд.
+ * Раздаёт сайт прямо из корня репозитория (без копии в pruushkaa_archive/public)
+ * и хранит данные в корневом database.json — том же файле, что публикуется на GitHub Pages.
+ */
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -5,75 +10,62 @@ const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DB_FILE = path.join(__dirname, 'database.json');
-const PUBLIC_DB = path.join(__dirname, 'public', 'database.json');
+const SITE_DIR = path.join(__dirname, '..');
+const DB_FILE = path.join(SITE_DIR, 'database.json');
+const INDEX_FILE = path.join(SITE_DIR, 'index.html');
+
+// Служебные файлы репозитория, которые не должны раздаваться как статика
+const PRIVATE_PATHS = /^\/(pruushkaa_archive|scripts|node_modules|package(-lock)?\.json)(\/|$)/i;
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use((req, res, next) => (PRIVATE_PATHS.test(req.path) ? res.status(404).end() : next()));
+app.use(express.static(SITE_DIR, { dotfiles: 'ignore' }));
 
 app.get(['/music', '/music.html'], (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'music.html'));
+    res.sendFile(path.join(SITE_DIR, 'music.html'));
 });
+
+const str = (value, fallback) => (value !== undefined && value !== null ? String(value).trim() : fallback);
+
+// Приводит любые данные к полной схеме БД (используется и при чтении, и при записи)
+function normalizeDB(data = {}) {
+    const discord = data.discord || {};
+    const discordId = discord.discordId !== undefined ? String(discord.discordId) : (discord.id ? String(discord.id) : '');
+    const id = discord.id !== undefined ? String(discord.id) : (discord.discordId ? String(discord.discordId) : '');
+    return {
+        photos: Array.isArray(data.photos) ? data.photos : [],
+        wiki: Array.isArray(data.wiki) ? data.wiki : (Array.isArray(data.articles) ? data.articles : []),
+        tracks: Array.isArray(data.tracks) ? data.tracks : [],
+        discord: {
+            status: discord.status || 'online',
+            text: discord.text || 'В сети',
+            discordId,
+            id
+        },
+        adminPass: str(data.adminPass, 'admin'),
+        lastFmApiKey: str(data.lastFmApiKey, ''),
+        lastFmUser: str(data.lastFmUser, 'Pruushkaa')
+    };
+}
 
 function readDB() {
     let parsed = {};
     try {
         if (fs.existsSync(DB_FILE)) {
-            const data = fs.readFileSync(DB_FILE, 'utf8');
-            parsed = JSON.parse(data);
-        } else if (fs.existsSync(PUBLIC_DB)) {
-            const data = fs.readFileSync(PUBLIC_DB, 'utf8');
-            parsed = JSON.parse(data);
+            parsed = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
         }
     } catch (e) {
         console.error('Ошибка чтения database.json:', e);
     }
-    return {
-        photos: Array.isArray(parsed.photos) ? parsed.photos : [],
-        wiki: Array.isArray(parsed.wiki) ? parsed.wiki : (Array.isArray(parsed.articles) ? parsed.articles : []),
-        tracks: Array.isArray(parsed.tracks) ? parsed.tracks : [],
-        discord: {
-            status: parsed.discord?.status || 'online',
-            text: parsed.discord?.text || 'В сети',
-            discordId: parsed.discord?.discordId !== undefined ? String(parsed.discord.discordId) : (parsed.discord?.id ? String(parsed.discord.id) : ''),
-            id: parsed.discord?.id !== undefined ? String(parsed.discord.id) : (parsed.discord?.discordId ? String(parsed.discord.discordId) : '')
-        },
-        adminPass: parsed.adminPass !== undefined && parsed.adminPass !== null ? String(parsed.adminPass).trim() : 'admin',
-        lastFmApiKey: parsed.lastFmApiKey !== undefined && parsed.lastFmApiKey !== null ? String(parsed.lastFmApiKey).trim() : '',
-        lastFmUser: parsed.lastFmUser !== undefined && parsed.lastFmUser !== null ? String(parsed.lastFmUser).trim() : 'Pruushkaa'
-    };
+    return normalizeDB(parsed);
 }
 
 function writeDB(data) {
     try {
-        const fullDB = {
-            photos: Array.isArray(data.photos) ? data.photos : [],
-            wiki: Array.isArray(data.wiki) ? data.wiki : (Array.isArray(data.articles) ? data.articles : []),
-            tracks: Array.isArray(data.tracks) ? data.tracks : [],
-            discord: {
-                status: data.discord?.status || 'online',
-                text: data.discord?.text || 'В сети',
-                discordId: data.discord?.discordId !== undefined ? String(data.discord.discordId) : (data.discord?.id ? String(data.discord.id) : ''),
-                id: data.discord?.id !== undefined ? String(data.discord.id) : (data.discord?.discordId ? String(data.discord.discordId) : '')
-            },
-            adminPass: data.adminPass !== undefined && data.adminPass !== null ? String(data.adminPass).trim() : 'admin',
-            lastFmApiKey: data.lastFmApiKey !== undefined && data.lastFmApiKey !== null ? String(data.lastFmApiKey).trim() : '',
-            lastFmUser: data.lastFmUser !== undefined && data.lastFmUser !== null ? String(data.lastFmUser).trim() : 'Pruushkaa'
-        };
-        const jsonStr = JSON.stringify(fullDB, null, 2);
-        fs.writeFileSync(DB_FILE, jsonStr, 'utf8');
-        try {
-            const publicDir = path.join(__dirname, 'public');
-            if (!fs.existsSync(publicDir)) {
-                fs.mkdirSync(publicDir, { recursive: true });
-            }
-            fs.writeFileSync(PUBLIC_DB, jsonStr, 'utf8');
-        } catch (err) {
-            console.error('Не удалось записать публичную копию DB:', err);
-        }
+        fs.writeFileSync(DB_FILE, JSON.stringify(normalizeDB(data), null, 2), 'utf8');
         return true;
     } catch (e) {
         console.error('Ошибка записи database.json:', e);
@@ -83,16 +75,14 @@ function writeDB(data) {
 
 // Убеждаемся, что база содержит все поля
 try {
-    const initData = readDB();
-    writeDB(initData);
+    writeDB(readDB());
 } catch (e) {
     console.error('Ошибка начальной инициализации БД:', e);
 }
 
 app.get(['/api/data', '/database.json'], (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    const db = readDB();
-    res.json(db);
+    res.json(readDB());
 });
 
 app.post('/api/data', (req, res) => {
@@ -110,42 +100,40 @@ app.post('/api/data', (req, res) => {
         return res.status(400).json({ error: 'Пустые данные' });
     }
 
-    const newDiscord = newData.discord || {};
-    const dId = newDiscord.discordId !== undefined ? newDiscord.discordId : (newDiscord.id !== undefined ? newDiscord.id : currentDB.discord.discordId);
-
-    const merged = {
+    const updatedDB = {
         photos: Array.isArray(newData.photos) ? newData.photos : currentDB.photos,
         wiki: Array.isArray(newData.wiki) ? newData.wiki : (Array.isArray(newData.articles) ? newData.articles : currentDB.wiki),
-        tracks: Array.isArray(newData.tracks) ? newData.tracks : (Array.isArray(currentDB.tracks) ? currentDB.tracks : []),
+        tracks: Array.isArray(newData.tracks) ? newData.tracks : currentDB.tracks,
         discord: {
-            status: newDiscord.status || currentDB.discord.status || 'online',
-            text: newDiscord.text !== undefined ? newDiscord.text : (newData.discordStatus || currentDB.discord.text || 'В сети'),
-            discordId: String(dId || '').trim(),
-            id: String(dId || '').trim()
+            status: newData.discord?.status || currentDB.discord.status,
+            text: newData.discord?.text || currentDB.discord.text,
+            discordId: newData.discord?.discordId !== undefined ? String(newData.discord.discordId) : (newData.discord?.id ? String(newData.discord.id) : currentDB.discord.discordId),
+            id: newData.discord?.id !== undefined ? String(newData.discord.id) : (newData.discord?.discordId ? String(newData.discord.discordId) : currentDB.discord.id)
         },
         adminPass: newData.adminPass && String(newData.adminPass).trim() ? String(newData.adminPass).trim() : currentPass,
         lastFmApiKey: newData.lastFmApiKey !== undefined ? String(newData.lastFmApiKey).trim() : currentDB.lastFmApiKey,
-        lastFmUser: newData.lastFmUser !== undefined && String(newData.lastFmUser).trim() ? String(newData.lastFmUser).trim() : currentDB.lastFmUser
+        lastFmUser: newData.lastFmUser !== undefined ? String(newData.lastFmUser).trim() : currentDB.lastFmUser
     };
 
-    const success = writeDB(merged);
-    if (success) {
-        console.log('[DB SAVED] База данных успешно обновлена на сервере');
-        res.json({ success: true, message: 'Сохранено на сервере', data: merged });
+    if (writeDB(updatedDB)) {
+        console.log(`[DB SYNC SUCCESS] База обновлена. Фото: ${updatedDB.photos.length}, Статей: ${updatedDB.wiki.length}, Треков: ${updatedDB.tracks.length}`);
+        return res.json({ success: true, message: 'Данные успешно сохранены в database.json', data: updatedDB });
     } else {
-        res.status(500).json({ error: 'Ошибка записи на диск сервера' });
+        return res.status(500).json({ error: 'Не удалось записать database.json' });
     }
 });
 
+// SPA fallback для всех остальных страниц
 app.use((req, res) => {
-    const indexPath = path.join(__dirname, 'public', 'index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
+    if (fs.existsSync(INDEX_FILE)) {
+        res.sendFile(INDEX_FILE);
     } else {
-        res.status(404).send('index.html не найден в папке public');
+        res.status(404).send('Not Found');
     }
 });
 
 app.listen(PORT, () => {
-    console.log('PRUUSHKAA_ARCHIVE Server v3.1 running on port ' + PORT);
+    console.log(`[PRUUSHKAA // ARCHIVE_OS] Сервер запущен на http://localhost:${PORT}`);
+    console.log(`  Раздача сайта из корня: ${SITE_DIR}`);
+    console.log(`  База данных: ${DB_FILE}`);
 });

@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <!-- Primary Meta Tags -->
     <title>PRUUSHKAA // Музыкальная аналитика Last.fm (40,000+ скробблов)</title>
     <meta name="title" content="PRUUSHKAA // Музыкальная аналитика Last.fm (40,000+ скробблов)" />
     <meta name="description" content="Глубокая аналитика 40,000+ скробблов Last.fm: интерактивные чарты, тепловая карта прослушиваний, гиперфиксации, 24-часовой радар и плеер сэмплов." />
@@ -36,6 +35,7 @@
 
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="assets/js/tailwind-config.js"></script>
 
     <!-- Google Fonts: Space Grotesk & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -46,43 +46,22 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 
     <!-- Static Application Config -->
-    <script src="./config.js"></script>
-    <!-- Shared Brutalist Design System & Styles -->
-    <link rel="stylesheet" href="./archive.css" />
+    <script src="config.js"></script>
 
     <!-- Precomputed Music Summary & Analytics Engine -->
     <script src="public/data/music-summary.js"></script>
-    <script src="public/data/music-analytics.js"></script>
+    <script src="assets/js/music-analytics.js"></script>
 
     <!-- React 18 & Babel Standalone -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['"Space Grotesk"', 'sans-serif'],
-                        mono: ['"JetBrains Mono"', 'monospace'],
-                    },
-                    colors: {
-                        archive: {
-                            bg: '#F4F0EA',
-                            orange: '#FF5722',
-                            lime: '#CCFF00',
-                            cyan: '#00E5FF',
-                            violet: '#B388FF',
-                            dark: '#121212'
-                        }
-                    }
-                }
-            }
-        };
-    </script>
+    <!-- Общее ядро сайта (звук, глитч-фон, утилиты) -->
+    <script src="assets/js/archive-core.js"></script>
 
-    <!-- Shared brutalist styles loaded via ./archive.css -->
+    <!-- Единые базовые стили дизайн-системы -->
+    <link rel="stylesheet" href="assets/css/base.css" />
 </head>
 <body>
     <div id="root"></div>
@@ -90,110 +69,14 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-        const CONFIG = (typeof window !== 'undefined' && window.APP_CONFIG) ? window.APP_CONFIG : {
-            LASTFM_USER: 'Pruushkaa',
-            LASTFM_API_KEY: '684b6a85757601272919018585e32a99',
-            LASTFM_POLL_INTERVAL_MS: 15000,
-            DEFAULT_ADMIN_PASSWORD: 'admin'
-        };
+        // Общее ядро: assets/js/archive-core.js (конфиг, звук, глитч-фон, утилиты)
+        const {
+            CONFIG, SoundEngine, GlitchCanvas, triggerGlitchSpike,
+            downloadFile, formatClock, fetchFirstJson, fetchItunesPreview
+        } = window.ArchiveCore;
+        const { formatScrobbleDate } = window.MusicAnalytics;
 
-        // ==========================================
-        // 1. SHARED UTILITIES & SFX (FROM CONFIG.JS)
-        const sfx = (typeof window !== 'undefined' && window.APP_UTILS?.sfx) || {
-            playHover: () => {},
-            playClick: () => {},
-            playSuccess: () => {},
-            playWarning: () => {}
-        };
-        const triggerGlitchSpike = (typeof window !== 'undefined' && window.APP_UTILS?.triggerGlitchSpike) || (() => {});
-        const copyTextToClipboard = (typeof window !== 'undefined' && window.APP_UTILS?.copyTextToClipboard) || (() => Promise.resolve(false));
-
-        const GlitchCanvas = ({ darkMode }) => {
-            const canvasRef = useRef(null);
-            const spikeRef = useRef(0);
-
-            useEffect(() => {
-                const canvas = canvasRef.current;
-                if (!canvas) return;
-                const ctx = canvas.getContext('2d');
-                let animId;
-
-                const handleResize = () => {
-                    canvas.width = window.innerWidth;
-                    canvas.height = window.innerHeight;
-                };
-                handleResize();
-                window.addEventListener('resize', handleResize);
-
-                const handleSpike = (e) => {
-                    spikeRef.current = (e.detail?.intensity || 1) * 14;
-                };
-                window.addEventListener('glitch-spike', handleSpike);
-
-                const render = () => {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                    // Grid
-                    ctx.save();
-                    const gridSize = 48;
-                    ctx.strokeStyle = darkMode ? 'rgba(255, 87, 34, 0.04)' : 'rgba(0, 0, 0, 0.03)';
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    for (let x = 0; x < canvas.width; x += gridSize) {
-                        ctx.moveTo(x, 0);
-                        ctx.lineTo(x, canvas.height);
-                    }
-                    for (let y = 0; y < canvas.height; y += gridSize) {
-                        ctx.moveTo(0, y);
-                        ctx.lineTo(canvas.width, y);
-                    }
-                    ctx.stroke();
-                    ctx.restore();
-
-                    // Glitch lines
-                    const isSpiking = spikeRef.current > 0;
-                    const chance = isSpiking ? 0.85 : 0.03;
-                    if (Math.random() < chance) {
-                        ctx.save();
-                        const count = isSpiking ? Math.ceil(spikeRef.current / 3) : 1;
-                        for (let k = 0; k < count; k++) {
-                            const gx = Math.random() * canvas.width;
-                            const gy = Math.random() * canvas.height;
-                            const gw = 40 + Math.random() * 220;
-                            const gh = 2 + Math.random() * 12;
-                            ctx.fillStyle = Math.random() > 0.4
-                                ? (darkMode ? 'rgba(204, 255, 0, 0.25)' : 'rgba(255, 87, 34, 0.22)')
-                                : (darkMode ? 'rgba(0, 229, 255, 0.25)' : 'rgba(0, 0, 0, 0.15)');
-                            ctx.fillRect(gx, gy, gw, gh);
-                        }
-                        ctx.restore();
-                    }
-
-                    if (spikeRef.current > 0) {
-                        spikeRef.current -= 0.6;
-                        if (spikeRef.current < 0) spikeRef.current = 0;
-                    }
-
-                    animId = requestAnimationFrame(render);
-                };
-
-                render();
-
-                return () => {
-                    cancelAnimationFrame(animId);
-                    window.removeEventListener('resize', handleResize);
-                    window.removeEventListener('glitch-spike', handleSpike);
-                };
-            }, [darkMode]);
-
-            return (
-                <canvas
-                    ref={canvasRef}
-                    className="fixed inset-0 pointer-events-none z-0"
-                    style={{ opacity: 0.85 }}
-                />
-            );
-        };
+        const sfx = new SoundEngine('music');
 
         // ==========================================
         // 3. ANIMATED CANVAS EQUALIZER
@@ -1085,17 +968,6 @@
                 return filteredScrobbles.slice(start, start + pageSize);
             }, [filteredScrobbles, currentPage, pageSize]);
 
-            const formatDate = (ts) => {
-                if (!ts) return '—';
-                const d = new Date(ts);
-                const day = String(d.getDate()).padStart(2, '0');
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const year = d.getFullYear();
-                const hours = String(d.getHours()).padStart(2, '0');
-                const minutes = String(d.getMinutes()).padStart(2, '0');
-                return `${day}.${month}.${year} ${hours}:${minutes}`;
-            };
-
             return (
                 <div className="brutal-card p-4 sm:p-6 mb-8 bg-white text-black" id="archive-section">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b-3 border-black pb-3 mb-4">
@@ -1219,7 +1091,7 @@
                                                     {globalIdx}
                                                 </td>
                                                 <td className="p-2.5 font-bold whitespace-nowrap text-neutral-700">
-                                                    {formatDate(item.date)}
+                                                    {formatScrobbleDate(item.date)}
                                                 </td>
                                                 <td className="p-2.5 font-black text-black">
                                                     <span
@@ -1349,12 +1221,6 @@
             onSearchArchive,
             onPlayRandom
         }) => {
-            const formatTime = (typeof window !== 'undefined' && window.APP_UTILS?.formatTime) || ((sec) => {
-                const m = Math.floor(sec / 60);
-                const s = Math.floor(sec % 60);
-                return `${m}:${s < 10 ? '0' : ''}${s}`;
-            });
-
             const progressPct = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0;
 
             return (
@@ -1432,9 +1298,9 @@
                                     ></div>
                                 </div>
                                 <div className="flex justify-between font-mono text-[11px] text-neutral-500 font-bold mt-1 px-0.5">
-                                    <span>{formatTime(progress)}</span>
+                                    <span>{formatClock(progress)}</span>
                                     <span className="text-neutral-400">30S ITUNES / SYNTH PREVIEW</span>
-                                    <span>{formatTime(duration)}</span>
+                                    <span>{formatClock(duration)}</span>
                                 </div>
                             </div>
 
@@ -1816,23 +1682,11 @@
                 }
 
                 const loadSummary = async () => {
-                    const targets = [
-                        'public/data/music-summary.json',
-                        'data/music-summary.json',
-                        './public/data/music-summary.json'
-                    ];
-                    for (const url of targets) {
-                        try {
-                            const res = await fetch(url);
-                            if (res.ok) {
-                                const json = await res.json();
-                                setSummaryData(json);
-                                if (json.allTime?.topTracks?.[0]) {
-                                    setActiveTrack(json.allTime.topTracks[0]);
-                                }
-                                break;
-                            }
-                        } catch (e) {}
+                    const json = await fetchFirstJson(['public/data/music-summary.json', './public/data/music-summary.json']);
+                    if (!json) return;
+                    setSummaryData(json);
+                    if (json.allTime?.topTracks?.[0]) {
+                        setActiveTrack(json.allTime.topTracks[0]);
                     }
                 };
                 loadSummary();
@@ -1843,31 +1697,20 @@
                 let isMounted = true;
                 const loadFullScrobbles = async () => {
                     setLoadingFull(true);
-                    const targets = [
-                        'public/data/lastfmstats-Pruushkaa.json',
-                        'data/lastfmstats-Pruushkaa.json',
-                        './public/data/lastfmstats-Pruushkaa.json'
-                    ];
-
-                    for (const url of targets) {
-                        try {
-                            const res = await fetch(url);
-                            if (res.ok) {
-                                const json = await res.json();
-                                if (isMounted && Array.isArray(json?.scrobbles)) {
-                                    setFullScrobbles(json.scrobbles);
-                                    setLoadingFull(false);
-                                    // Set latest scrobble as active track if not live
-                                    const latest = json.scrobbles[json.scrobbles.length - 1];
-                                    if (latest && !liveTrack) {
-                                        setActiveTrack(latest);
-                                    }
-                                    return;
-                                }
-                            }
-                        } catch (e) {}
+                    const json = await fetchFirstJson(
+                        ['public/data/lastfmstats-Pruushkaa.json', './public/data/lastfmstats-Pruushkaa.json'],
+                        { accept: (data) => Array.isArray(data?.scrobbles) }
+                    );
+                    if (!isMounted) return;
+                    setLoadingFull(false);
+                    if (json) {
+                        setFullScrobbles(json.scrobbles);
+                        // Set latest scrobble as active track if not live
+                        const latest = json.scrobbles[json.scrobbles.length - 1];
+                        if (latest && !liveTrack) {
+                            setActiveTrack(latest);
+                        }
                     }
-                    if (isMounted) setLoadingFull(false);
                 };
 
                 loadFullScrobbles();
@@ -1939,10 +1782,7 @@
                 const title = trackObj.track || trackObj.name || '';
 
                 try {
-                    const q = encodeURIComponent(`${artist} ${title}`);
-                    const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=song&limit=1`);
-                    const data = await res.json();
-                    const preview = data?.results?.[0]?.previewUrl;
+                    const preview = await fetchItunesPreview(artist, title);
 
                     if (preview) {
                         const audio = new Audio(preview);
@@ -2030,18 +1870,12 @@
                     const alb = (item.album || '').replace(/"/g, '""');
                     csv += `"${item.date || ''}","${d}","${art}","${trk}","${alb}"\n`;
                 }
-                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `pruushkaa_scrobbles_${periodFilter}.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
+                downloadFile(csv, `pruushkaa_scrobbles_${periodFilter}.csv`, 'text/csv;charset=utf-8;');
             };
 
             return (
                 <div className="min-h-screen relative flex flex-col justify-between selection:bg-[#CCFF00] selection:text-black">
-                    <GlitchCanvas darkMode={darkMode} />
+                    <GlitchCanvas darkMode={darkMode} variant="music" />
 
                     <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-6 py-4 w-full">
                         {/* Header */}

@@ -1,6 +1,6 @@
 window.MUSIC_SUMMARY_DATA = {
   "username": "Pruushkaa",
-  "generatedAt": "2026-10-31T21:04:08.717Z",
+  "generatedAt": "2026-10-31T23:10:44.222Z",
   "totalScrobbles": 40092,
   "earliestDate": 1763144386000,
   "latestDate": 1793442346000,
@@ -373,7 +373,7 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "Mirèle",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 191,
         "albumId": ""
       },
@@ -750,7 +750,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Mirèle",
         "track": "Если бы Любовь",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 92,
         "streak": 10
       },
@@ -1004,7 +1004,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Pinata",
         "track": "I’m talking to you!",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "streak": 47,
         "totalPlays": 60
       },
@@ -1025,7 +1025,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "НАРЕЗНЫЕ ПРИДУРКИ",
         "track": "⚡️ПЯТЁРКА, СТИНТ, Т2х2, ДЕДПИ47 и ХЕСУС о БАНЕ ПУПУСА // РЕАКЦИЯ ПУПУСА на ВНЕЗАПНУЮ ПОПУЛЯРНОСТЬ🤯",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "streak": 40,
         "totalPlays": 40
       },
@@ -1046,7 +1046,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Стинта Резка",
         "track": "СТИНТ СМОТРИТ: РУССКО-ЯПОНСКАЯ ВОЙНА В ТВИТТЕРЕ (и бразильская)",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "streak": 38,
         "totalPlays": 38
       },
@@ -1719,7 +1719,7 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "Евгений Мухин",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 46,
         "albumId": ""
       },
@@ -1737,7 +1737,7 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "Mirèle",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 42,
         "albumId": ""
       },
@@ -1797,7 +1797,7 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "ВСЕ песни из СССР",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 24,
         "albumId": ""
       },
@@ -1869,7 +1869,7 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "ooes",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 14,
         "albumId": ""
       },
@@ -2143,14 +2143,14 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Евгений Мухин",
         "track": "АЛИНА",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 15,
         "streak": 4
       },
       {
         "artist": "Mirèle",
         "track": "провода (matrang cover)",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 14,
         "streak": 9
       },
@@ -2164,7 +2164,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Евгений Мухин",
         "track": "СТРИМ ЭРЕКЦИЙ (Powerwolf Cover)",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 13,
         "streak": 2
       },
@@ -2346,7 +2346,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "КОМПАС!",
         "track": "Еврейская народная ТЯЖЁЛАЯ",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 8,
         "streak": 1
       },
@@ -2397,7 +2397,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Mirèle",
         "track": "провода (matrang cover)",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "streak": 9,
         "totalPlays": 14
       },
@@ -2425,7 +2425,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Евгений Мухин",
         "track": "АЛИНА",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "streak": 4,
         "totalPlays": 15
       },
@@ -2870,7 +2870,7 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "Евгений Мухин",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 12,
         "albumId": ""
       },
@@ -2918,13 +2918,13 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "Mili",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 6,
         "albumId": ""
       },
       {
         "artist": "Ляпис Трубецкой",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 6,
         "albumId": ""
       },
@@ -2936,13 +2936,13 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "Molchat Doma",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 5,
         "albumId": ""
       },
       {
         "artist": "32ki",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 5,
         "albumId": ""
       },
@@ -3002,7 +3002,7 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "Siinamota",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 4,
         "albumId": ""
       },
@@ -3068,19 +3068,19 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "Aiobahn",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 3,
         "albumId": ""
       },
       {
         "artist": "Pinata",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 3,
         "albumId": ""
       },
       {
         "artist": "КОМПАС!",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 3,
         "albumId": ""
       },
@@ -3092,7 +3092,7 @@ window.MUSIC_SUMMARY_DATA = {
       },
       {
         "artist": "Кино",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 3,
         "albumId": ""
       },
@@ -3208,7 +3208,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Ляпис Трубецкой",
         "track": "Ляпис Трубецкой - Капитал",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 6,
         "streak": 3
       },
@@ -3229,7 +3229,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "32ki",
         "track": "肆足歩行 / 足立レイV6 - Walking with you",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 5,
         "streak": 2
       },
@@ -3285,14 +3285,14 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Siinamota",
         "track": "椎名もた(siinamota) - Young Girl A / 少女A",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 4,
         "streak": 1
       },
       {
         "artist": "Mili",
         "track": "Library of Ruina",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 4,
         "streak": 2
       },
@@ -3341,7 +3341,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Евгений Мухин",
         "track": "СТРИМ ЭРЕКЦИЙ (Powerwolf Cover)",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 4,
         "streak": 1
       },
@@ -3418,28 +3418,28 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Aiobahn",
         "track": "Aiobahn +81 feat. DEMONDICE - DEMON'S SHOT (Official MV)",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 3,
         "streak": 1
       },
       {
         "artist": "Евгений Мухин",
         "track": "МИХАИЛ",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 3,
         "streak": 1
       },
       {
         "artist": "Pinata",
         "track": "I'm talking to you!",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 3,
         "streak": 1
       },
       {
         "artist": "КОМПАС!",
         "track": "Еврейская народная ТЯЖЁЛАЯ",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 3,
         "streak": 1
       },
@@ -3453,14 +3453,14 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Кино",
         "track": "Кончится лето ft. 重音テト Kasane Teto",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 3,
         "streak": 1
       },
       {
         "artist": "Molchat Doma",
         "track": "Molchat Doma - Sudno (dir. by @blood.doves)",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "count": 3,
         "streak": 1
       },
@@ -3518,7 +3518,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "Ляпис Трубецкой",
         "track": "Ляпис Трубецкой - Капитал",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "streak": 3,
         "totalPlays": 6
       },
@@ -3553,7 +3553,7 @@ window.MUSIC_SUMMARY_DATA = {
       {
         "artist": "32ki",
         "track": "肆足歩行 / 足立レイV6 - Walking with you",
-        "album": "Unknown Album",
+        "album": "Без альбома",
         "streak": 2,
         "totalPlays": 5
       },
