@@ -364,8 +364,9 @@
             const counts = Object.values(daily);
             const maxVal = Math.max(...counts, 1);
 
-            // Build 52 weeks grid (364 days ending around Oct 31, 2026)
-            const endDate = new Date('2026-10-31T00:00:00Z');
+            // Build 52 weeks grid (364 days ending around latest day or today)
+            const latestDateKey = dates.length > 0 ? dates[dates.length - 1] : '2026-10-31';
+            const endDate = new Date(`${latestDateKey}T23:59:59Z`);
             const totalDays = 52 * 7;
             const startDate = new Date(endDate.getTime() - (totalDays - 1) * 24 * 60 * 60 * 1000);
 
@@ -415,6 +416,9 @@
                 { label: 'Окт', col: 48 }
             ];
 
+            const activeDaysCount = Object.values(daily).filter(c => c > 0).length;
+            const totalDaysTracked = Math.max(dates.length, 365);
+
             return (
                 <div className="brutal-card p-4 sm:p-5 flex flex-col justify-between">
                     <div>
@@ -426,7 +430,7 @@
                                 </h3>
                             </div>
                             <div className="font-mono text-xs font-bold bg-[#CCFF00] text-black px-2 py-0.5 border border-black">
-                                351 АКТИВНЫЙ ДЕНЬ ИЗ 365 (96.2%)
+                                {activeDaysCount} АКТИВНЫХ ДНЕЙ ({((activeDaysCount / Math.max(1, totalDaysTracked)) * 100).toFixed(1)}%)
                             </div>
                         </div>
 
@@ -915,7 +919,9 @@
             setSelectedDay,
             onPlayTrack,
             onExportCsv,
-            loadingFull
+            loadingFull,
+            newTracksCount = 0,
+            syncStatus = 'SYNCED'
         }) => {
             const [currentPage, setCurrentPage] = useState(1);
             const [sortOrder, setSortOrder] = useState('DESC'); // 'DESC' (newest first) or 'ASC' (oldest first)
@@ -979,9 +985,14 @@
                                 <h2 className="font-extrabold text-base sm:text-xl uppercase tracking-tight leading-none">
                                     АРХИВ ПРОСЛУШИВАНИЙ // SCROBBLE LOG
                                 </h2>
-                                <span className="font-mono text-xs text-neutral-600 font-bold">
-                                    ПОИСК И ПАГИНАЦИЯ ПО ВСЕЙ БАЗЕ (40,092 ТРЕКА)
-                                </span>
+                                <div className="font-mono text-xs text-neutral-600 font-bold flex items-center gap-2 mt-0.5 flex-wrap">
+                                    <span>ПОИСК И ПАГИНАЦИЯ ПО ВСЕЙ БАЗЕ ({scrobbles?.length ? scrobbles.length.toLocaleString() : '40,092'} ТРЕКОВ)</span>
+                                    {newTracksCount > 0 && (
+                                        <span className="bg-[#CCFF00] text-black px-1.5 py-0.2 border border-black text-[10px] font-black shadow-[1px_1px_0px_#000]">
+                                            +{newTracksCount} LIVE СИНХРОНИЗИРОВАНО
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -1091,7 +1102,14 @@
                                                     {globalIdx}
                                                 </td>
                                                 <td className="p-2.5 font-bold whitespace-nowrap text-neutral-700">
-                                                    {formatScrobbleDate(item.date)}
+                                                    <div className="flex items-center gap-1.5">
+                                                        {item.isLiveSynced && (
+                                                            <span className="px-1 py-0.2 bg-[#CCFF00] text-black border border-black font-black text-[9px] shadow-[1px_1px_0px_#000] animate-pulse" title="Скроббл синхронизирован через Last.fm API">
+                                                                LIVE
+                                                            </span>
+                                                        )}
+                                                        <span>{formatScrobbleDate(item.date)}</span>
+                                                    </div>
                                                 </td>
                                                 <td className="p-2.5 font-black text-black">
                                                     <span
@@ -1217,6 +1235,9 @@
             volume,
             setVolume,
             liveStatus,
+            syncStatus,
+            syncError,
+            newTracksCount,
             stats,
             onSearchArchive,
             onPlayRandom
@@ -1239,7 +1260,23 @@
                                     </span>
                                 </div>
 
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap justify-end">
+                                    {syncStatus === 'SYNCED' && newTracksCount > 0 && (
+                                        <span className="inline-flex items-center gap-1 font-mono text-[10px] font-black px-2 py-0.5 border border-black bg-[#CCFF00] text-black shadow-[1px_1px_0px_#000]">
+                                            ● LIVE СИНХРОНИЗАЦИЯ (+{newTracksCount})
+                                        </span>
+                                    )}
+                                    {syncStatus === 'SYNCING' && (
+                                        <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 border border-black bg-amber-200 text-black animate-pulse">
+                                            СИНХРОНИЗАЦИЯ С LAST.FM...
+                                        </span>
+                                    )}
+                                    {syncStatus === 'OFFLINE' && (
+                                        <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 border border-black bg-neutral-200 text-neutral-600" title={syncError || 'Архивный режим'}>
+                                            ■ АРХИВНЫЕ ДАННЫЕ (ОФЛАЙН)
+                                        </span>
+                                    )}
+
                                     {liveStatus === 'LIVE' ? (
                                         <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-black px-2 py-0.5 border-2 border-black bg-[#CCFF00] text-black shadow-[2px_2px_0px_#000]">
                                             <span className="w-2 h-2 rounded-full bg-black animate-ping"></span>
@@ -1371,11 +1408,34 @@
                                 </span>
                             </div>
                             <div>
-                                <div className="font-mono text-2xl sm:text-3xl font-black text-black tracking-tight mb-1">
-                                    {(stats?.count || 40092).toLocaleString()}
+                                <div className="flex items-baseline gap-2 flex-wrap mb-1">
+                                    <span className="font-mono text-2xl sm:text-3xl font-black text-black tracking-tight">
+                                        {(stats?.count || 40092).toLocaleString()}
+                                    </span>
+                                    {newTracksCount > 0 && (
+                                        <span className="font-mono text-[10px] font-black bg-[#CCFF00] text-black px-1.5 py-0.5 border border-black shadow-[1px_1px_0px_#000] animate-pulse">
+                                            +{newTracksCount} С МОМЕНТА АРХИВА
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="font-mono text-[11px] text-neutral-500 font-bold">
-                                    За 352 дня трекинга
+                                    {syncStatus === 'SYNCED' ? (
+                                        <span className="text-[#FF5722] font-black flex items-center gap-1">
+                                            <span className="w-2 h-2 rounded-full bg-[#CCFF00] border border-black inline-block"></span>
+                                            Синхронизировано с Last.fm
+                                        </span>
+                                    ) : syncStatus === 'SYNCING' ? (
+                                        <span className="text-amber-600 font-black animate-pulse">
+                                            Синхронизация новых скробблов...
+                                        </span>
+                                    ) : syncStatus === 'OFFLINE' ? (
+                                        <span className="text-neutral-500 font-bold flex items-center gap-1">
+                                            <span className="w-2 h-2 bg-neutral-400 inline-block"></span>
+                                            Архивные данные (офлайн)
+                                        </span>
+                                    ) : (
+                                        <span>За 352 дня трекинга</span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1604,7 +1664,11 @@
                 }
                 return null;
             });
-            const [fullScrobbles, setFullScrobbles] = useState([]);
+            const [archiveScrobbles, setArchiveScrobbles] = useState([]);
+            const [mergedScrobbles, setMergedScrobbles] = useState([]);
+            const [newTracksCount, setNewTracksCount] = useState(0);
+            const [syncStatus, setSyncStatus] = useState('IDLE'); // 'IDLE' | 'SYNCING' | 'SYNCED' | 'OFFLINE'
+            const [syncError, setSyncError] = useState(null);
             const [loadingFull, setLoadingFull] = useState(false);
 
             // Period Filter: 'ALL' | '30D' | '7D' | '2026' | '2025'
@@ -1619,6 +1683,7 @@
             const [lastFmUser, setLastFmUser] = useState(CONFIG.LASTFM_USER || 'Pruushkaa');
             const [liveTrack, setLiveTrack] = useState(null);
             const [liveStatus, setLiveStatus] = useState('OFFLINE'); // 'LIVE' | 'OFFLINE'
+            const latestSeenDateRef = useRef(0);
 
             // Audio Player
             const [activeTrack, setActiveTrack] = useState(null);
@@ -1692,70 +1757,135 @@
                 loadSummary();
             }, [summaryData]);
 
-            // 2. Fetch Full Dataset for Archive (in background)
+            // 2. Fetch Full Dataset & Hybrid Delta Sync from Last.fm
             useEffect(() => {
                 let isMounted = true;
-                const loadFullScrobbles = async () => {
+
+                const loadFullAndSync = async () => {
                     setLoadingFull(true);
-                    const json = await fetchFirstJson(
-                        ['public/data/lastfmstats-Pruushkaa.json', './public/data/lastfmstats-Pruushkaa.json'],
-                        { accept: (data) => Array.isArray(data?.scrobbles) }
-                    );
-                    if (!isMounted) return;
-                    setLoadingFull(false);
-                    if (json) {
-                        setFullScrobbles(json.scrobbles);
-                        // Set latest scrobble as active track if not live
-                        const latest = json.scrobbles[json.scrobbles.length - 1];
-                        if (latest && !liveTrack) {
-                            setActiveTrack(latest);
+                    setSyncStatus('SYNCING');
+
+                    try {
+                        const json = await fetchFirstJson(
+                            ['public/data/lastfmstats-Pruushkaa.json', './public/data/lastfmstats-Pruushkaa.json'],
+                            { accept: (data) => Array.isArray(data?.scrobbles) }
+                        );
+
+                        if (!isMounted) return;
+
+                        let baseList = [];
+                        let maxArchiveTs = 0;
+
+                        if (json && Array.isArray(json.scrobbles)) {
+                            baseList = json.scrobbles;
+                            maxArchiveTs = baseList.reduce((max, s) => Math.max(max, Number(s.date) || 0), 0);
+                            latestSeenDateRef.current = maxArchiveTs;
+                            setArchiveScrobbles(baseList);
+                            setMergedScrobbles(baseList);
+
+                            // Set latest scrobble as active track if not live
+                            const latest = baseList[baseList.length - 1];
+                            if (latest && !liveTrack) {
+                                setActiveTrack(latest);
+                            }
+                        }
+
+                        setLoadingFull(false);
+
+                        // Delta sync with Last.fm API
+                        if (window.MusicAnalytics && lastFmApiKey && lastFmApiKey.length >= 16) {
+                            try {
+                                const newTracks = await window.MusicAnalytics.fetchNewScrobblesFromApi(
+                                    lastFmUser,
+                                    lastFmApiKey,
+                                    maxArchiveTs
+                                );
+
+                                if (!isMounted) return;
+
+                                if (newTracks && newTracks.length > 0) {
+                                    const { merged, addedCount, maxTimestamp } = window.MusicAnalytics.mergeScrobbles(baseList, newTracks);
+                                    setMergedScrobbles(merged);
+                                    setNewTracksCount(addedCount);
+                                    latestSeenDateRef.current = Math.max(latestSeenDateRef.current, maxTimestamp);
+                                    if (merged.length > 0 && !liveTrack) {
+                                        setActiveTrack(merged[merged.length - 1]);
+                                    }
+                                }
+                                setSyncStatus('SYNCED');
+                            } catch (apiErr) {
+                                console.warn('Last.fm delta sync failed, falling back to offline archive:', apiErr);
+                                if (isMounted) {
+                                    setSyncStatus('OFFLINE');
+                                    setSyncError(apiErr?.message || 'Офлайн режим');
+                                }
+                            }
+                        } else {
+                            if (isMounted) setSyncStatus('SYNCED');
+                        }
+                    } catch (err) {
+                        console.error('Failed to load archive dataset:', err);
+                        if (isMounted) {
+                            setLoadingFull(false);
+                            setSyncStatus('OFFLINE');
+                            setSyncError(err?.message || 'Ошибка загрузки базы');
                         }
                     }
                 };
 
-                loadFullScrobbles();
+                loadFullAndSync();
                 return () => { isMounted = false; };
-            }, [liveTrack]);
+            }, [lastFmApiKey, lastFmUser]);
 
-            // 3. Live Last.fm Poll
+            // 3. Live Last.fm Polling (every 30 seconds)
             useEffect(() => {
-                if (!lastFmApiKey || lastFmApiKey.length < 16) return;
+                if (!lastFmApiKey || lastFmApiKey.length < 16 || !window.MusicAnalytics) return;
                 let isMounted = true;
 
-                const fetchLive = async () => {
+                const pollLive = async () => {
                     try {
-                        const url = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${encodeURIComponent(lastFmUser)}&api_key=${encodeURIComponent(lastFmApiKey)}&format=json&limit=2`;
-                        const res = await fetch(url);
-                        if (!res.ok) return;
-                        const data = await res.json();
-                        const rawTrack = data?.recenttracks?.track;
-                        const trackList = Array.isArray(rawTrack) ? rawTrack : (rawTrack ? [rawTrack] : []);
-                        if (trackList.length > 0 && isMounted) {
-                            const first = trackList[0];
-                            const isNow = first['@attr']?.nowplaying === 'true';
-                            const parsed = {
-                                track: first.name,
-                                artist: first.artist?.['#text'] || first.artist?.name || 'Unknown',
-                                album: first.album?.['#text'] || '',
-                                image: first.image?.find(img => img.size === 'large')?.['#text'] || '',
-                                nowPlaying: isNow
-                            };
-                            setLiveTrack(parsed);
-                            setLiveStatus(isNow ? 'LIVE' : 'OFFLINE');
-                            if (isNow) {
-                                setActiveTrack(parsed);
+                        const res = await window.MusicAnalytics.pollLiveTrack(lastFmUser, lastFmApiKey);
+                        if (!isMounted || !res) return;
+
+                        if (res.isNowPlaying && res.nowPlayingTrack) {
+                            setLiveTrack(res.nowPlayingTrack);
+                            setLiveStatus('LIVE');
+                            if (!isPlaying) {
+                                setActiveTrack(res.nowPlayingTrack);
+                            }
+                        } else {
+                            setLiveStatus('OFFLINE');
+                            setLiveTrack(null);
+                        }
+
+                        // Auto-merge completed track when playback finishes
+                        if (res.lastCompletedTrack && res.lastCompletedTrack.date) {
+                            const completedTs = Number(res.lastCompletedTrack.date);
+                            if (completedTs > (latestSeenDateRef.current || 0)) {
+                                latestSeenDateRef.current = completedTs;
+                                setMergedScrobbles(prev => {
+                                    const { merged, addedCount } = window.MusicAnalytics.mergeScrobbles(prev, [res.lastCompletedTrack]);
+                                    if (addedCount > 0) {
+                                        setNewTracksCount(c => c + addedCount);
+                                        if (sfx.enabled) sfx.playSuccess();
+                                    }
+                                    return merged;
+                                });
                             }
                         }
-                    } catch (e) {}
+                    } catch (e) {
+                        // Silent fail for polling errors
+                    }
                 };
 
-                fetchLive();
-                const timer = setInterval(fetchLive, CONFIG.LASTFM_POLL_INTERVAL_MS || 15000);
+                pollLive();
+                const intervalMs = CONFIG.LASTFM_POLL_INTERVAL_MS || 30000;
+                const timer = setInterval(pollLive, intervalMs);
                 return () => {
                     isMounted = false;
                     clearInterval(timer);
                 };
-            }, [lastFmApiKey, lastFmUser]);
+            }, [lastFmApiKey, lastFmUser, isPlaying]);
 
             // 4. Audio Playback Engine (iTunes Search + Web Audio Synth Fallback)
             const stopAudio = useCallback(() => {
@@ -1843,9 +1973,9 @@
 
             // Computed Stats based on periodFilter
             const currentStats = useMemo(() => {
-                // If full scrobbles are loaded and a period is chosen:
-                if (fullScrobbles && fullScrobbles.length > 0 && typeof window.MusicAnalytics !== 'undefined') {
-                    const filtered = window.MusicAnalytics.filterByPeriod(fullScrobbles, periodFilter);
+                const list = mergedScrobbles.length > 0 ? mergedScrobbles : archiveScrobbles;
+                if (list && list.length > 0 && typeof window.MusicAnalytics !== 'undefined') {
+                    const filtered = window.MusicAnalytics.filterByPeriod(list, periodFilter);
                     return window.MusicAnalytics.calculateStats(filtered);
                 }
 
@@ -1854,14 +1984,14 @@
                 if (periodFilter === '30D') return summaryData.last30Days || summaryData.allTime;
                 if (periodFilter === '7D') return summaryData.last7Days || summaryData.allTime;
                 return summaryData.allTime;
-            }, [summaryData, fullScrobbles, periodFilter]);
+            }, [summaryData, mergedScrobbles, archiveScrobbles, periodFilter]);
 
             // CSV Export
             const handleExportCsv = () => {
                 sfx.playSuccess();
-                const list = fullScrobbles.length > 0 ? fullScrobbles : (summaryData?.allTime?.topTracks || []);
+                const list = mergedScrobbles.length > 0 ? mergedScrobbles : (summaryData?.allTime?.topTracks || []);
                 let csv = 'Timestamp,Date,Artist,Track,Album\n';
-                const count = Math.min(list.length, 5000); // safety cap for direct export
+                const count = Math.min(list.length, 10000); // safety cap for direct export
                 for (let i = 0; i < count; i++) {
                     const item = list[i];
                     const d = item.date ? new Date(item.date).toISOString() : '';
@@ -1899,8 +2029,13 @@
                                             v3.1
                                         </span>
                                     </div>
-                                    <div className="font-mono text-[11px] text-neutral-600 font-bold">
-                                        SYS_STATUS: MUSIC_RADAR // 40,092 SCROBBLES LOGGED
+                                    <div className="font-mono text-[11px] text-neutral-600 font-bold flex items-center gap-2 flex-wrap">
+                                        <span>SYS_STATUS: MUSIC_RADAR // {currentStats?.count ? currentStats.count.toLocaleString() : '40,092'} SCROBBLES LOGGED</span>
+                                        {newTracksCount > 0 && (
+                                            <span className="text-black bg-[#CCFF00] px-1.5 py-0.2 border border-black font-black text-[10px]">
+                                                +{newTracksCount} LIVE
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -1967,7 +2102,7 @@
                                     className="brutal-btn px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5 bg-[#FF5722] text-white shadow-[3px_3px_0px_#000]"
                                 >
                                     <i className="fa-solid fa-chart-simple"></i>
-                                    <span>АНАЛИТИКА МУЗЫКИ // 40K</span>
+                                    <span>АНАЛИТИКА МУЗЫКИ // {currentStats?.count ? `${Math.floor(currentStats.count / 1000)}K` : '40K'}</span>
                                     <span className="text-[10px] bg-black text-[#CCFF00] px-1 py-0.2">ACTIVE</span>
                                 </a>
 
@@ -2032,6 +2167,9 @@
                             volume={volume}
                             setVolume={setVolume}
                             liveStatus={liveStatus}
+                            syncStatus={syncStatus}
+                            syncError={syncError}
+                            newTracksCount={newTracksCount}
                             stats={currentStats}
                             onSearchArchive={(artist) => {
                                 setSearchQuery(artist);
@@ -2039,12 +2177,9 @@
                             }}
                             onPlayRandom={() => {
                                 sfx.playClick();
-                                if (fullScrobbles.length > 0) {
-                                    const rand = fullScrobbles[Math.floor(Math.random() * fullScrobbles.length)];
-                                    playTrackSample(rand);
-                                } else if (summaryData?.allTime?.topTracks) {
-                                    const tracks = summaryData.allTime.topTracks;
-                                    const rand = tracks[Math.floor(Math.random() * tracks.length)];
+                                const list = mergedScrobbles.length > 0 ? mergedScrobbles : (summaryData?.allTime?.topTracks || []);
+                                if (list.length > 0) {
+                                    const rand = list[Math.floor(Math.random() * list.length)];
                                     playTrackSample(rand);
                                 }
                             }}
@@ -2066,7 +2201,7 @@
                                 darkMode={darkMode}
                             />
                             <ActivityHeatmap
-                                dailyData={summaryData?.allTime?.daily || {}}
+                                dailyData={currentStats?.daily || summaryData?.allTime?.daily || {}}
                                 selectedDay={selectedDay}
                                 onSelectDay={(dayKey) => {
                                     setSelectedDay(dayKey);
@@ -2092,7 +2227,7 @@
 
                         {/* INTERACTIVE TRACK ARCHIVE TABLE */}
                         <ScrobblesArchiveTable
-                            scrobbles={fullScrobbles.length > 0 ? fullScrobbles : (summaryData?.allTime?.topTracks || [])}
+                            scrobbles={mergedScrobbles.length > 0 ? mergedScrobbles : (summaryData?.allTime?.topTracks || [])}
                             searchQuery={searchQuery}
                             setSearchQuery={setSearchQuery}
                             selectedDay={selectedDay}
@@ -2100,6 +2235,8 @@
                             onPlayTrack={playTrackSample}
                             onExportCsv={handleExportCsv}
                             loadingFull={loadingFull}
+                            newTracksCount={newTracksCount}
+                            syncStatus={syncStatus}
                         />
 
                         {/* FOOTER */}
@@ -2109,7 +2246,7 @@
                                 <span>PRUUSHKAA_ARCHIVE // MUSIC_RADAR ANALYTICS v3.1</span>
                             </div>
                             <div className="text-neutral-400">
-                                LAST.FM: <span className="text-[#FF5722] font-bold">@Pruushkaa</span> // 40,092 SCROBBLES LOGGED
+                                LAST.FM: <span className="text-[#FF5722] font-bold">@Pruushkaa</span> // {currentStats?.count ? currentStats.count.toLocaleString() : '40,092'} SCROBBLES LOGGED
                             </div>
                             <button
                                 onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
@@ -2139,8 +2276,9 @@
                         onClose={setCmdOpen}
                         onAction={(action) => {
                             if (action === 'random') {
-                                if (fullScrobbles.length > 0) {
-                                    playTrackSample(fullScrobbles[Math.floor(Math.random() * fullScrobbles.length)]);
+                                const list = mergedScrobbles.length > 0 ? mergedScrobbles : (summaryData?.allTime?.topTracks || []);
+                                if (list.length > 0) {
+                                    playTrackSample(list[Math.floor(Math.random() * list.length)]);
                                 }
                             } else if (action === 'mirele') {
                                 playTrackSample({ track: 'Метеорит', artist: 'Mirèle', album: 'Косички' });

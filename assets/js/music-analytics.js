@@ -1,6 +1,6 @@
 /**
  * PRUUSHKAA // MUSIC ANALYTICS ENGINE
- * High-performance client-side computation for Last.fm scrobble datasets.
+ * High-performance client-side computation & Hybrid Store for Last.fm scrobble datasets.
  */
 
 (function (root, factory) {
@@ -11,9 +11,12 @@
     } else {
         root.MusicAnalytics = factory();
     }
-}(typeof self !== 'undefined' ? self : this, function () {
+}(typeof self !== 'undefined' ? self : (typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this)), function () {
     'use strict';
 
+    /**
+     * Compute full analytical statistics from a scrobbles array
+     */
     function calculateStats(items) {
         const count = items ? items.length : 0;
         if (!count) {
@@ -159,6 +162,9 @@
         };
     }
 
+    /**
+     * Filter scrobbles by specified time window
+     */
     function filterByPeriod(scrobbles, periodKey, latestDate) {
         if (!scrobbles || !scrobbles.length) return [];
         if (periodKey === 'ALL') return scrobbles;
@@ -185,6 +191,165 @@
         }
 
         return scrobbles;
+    }
+
+    /**
+     * Normalize a raw track object from Last.fm API to standard schema
+     */
+    function normalizeApiTrack(item) {
+        if (!item) return null;
+        const isNow = Boolean(item['@attr']?.nowplaying === 'true');
+        const trackName = String(item.name || 'Unknown Track').trim();
+        const artistName = String(item.artist?.['#text'] || item.artist?.name || item.artist || 'Unknown Artist').trim();
+        const albumName = String(item.album?.['#text'] || item.album?.name || '').trim();
+        const albumId = String(item.album?.mbid || '').trim();
+
+        // Cover artwork
+        const images = Array.isArray(item.image) ? item.image : [];
+        const extraLarge = images.find(img => img.size === 'extralarge')?.['#text'];
+        const large = images.find(img => img.size === 'large')?.['#text'];
+        const medium = images.find(img => img.size === 'medium')?.['#text'];
+        const imgUrl = extraLarge || large || medium || (images[images.length - 1]?.['#text']) || '';
+
+        const dateTs = item.date?.uts ? parseInt(item.date.uts, 10) * 1000 : (isNow ? Date.now() : 0);
+
+        return {
+            track: trackName,
+            artist: artistName,
+            album: albumName,
+            albumId: albumId,
+            date: dateTs,
+            image: imgUrl,
+            nowPlaying: isNow,
+            isLiveSynced: true
+        };
+    }
+
+    /**
+     * Merge static archive scrobbles with new dynamic tracks from Last.fm API
+     * Deduplicates strictly by date and returns a sorted array.
+     */
+    function mergeScrobbles(archiveList, newApiTracks) {
+        const base = Array.isArray(archiveList) ? archiveList : [];
+        const additional = Array.isArray(newApiTracks) ? newApiTracks : [];
+
+        if (additional.length === 0) {
+            return {
+                merged: base,
+                addedCount: 0,
+                maxTimestamp: base.length > 0 ? base[base.length - 1].date : 0
+            };
+        }
+
+        // Deduplication set by timestamp and track signature
+        const existingKeys = new Set();
+        for (let i = 0; i < base.length; i++) {
+            const s = base[i];
+            existingKeys.add(s.date);
+            existingKeys.add(`${s.date}_${s.artist}_${s.track}`);
+        }
+
+        const validNew = [];
+        for (let i = 0; i < additional.length; i++) {
+            const t = additional[i];
+            if (!t || !t.date || t.nowPlaying) continue;
+            const sig = `${t.date}_${t.artist}_${t.track}`;
+            if (!existingKeys.has(t.date) && !existingKeys.has(sig)) {
+                existingKeys.add(t.date);
+                existingKeys.add(sig);
+                validNew.push(t);
+            }
+        }
+
+        // Sort new tracks chronologically ascending
+        validNew.sort((a, b) => a.date - b.date);
+
+        const merged = base.concat(validNew);
+        const maxTimestamp = merged.length > 0 ? merged[merged.length - 1].date : 0;
+
+        return {
+            merged: merged,
+            addedCount: validNew.length,
+            maxTimestamp: maxTimestamp
+        };
+    }
+
+    /**
+     * Fetch newly listened tracks from Last.fm API since a specific timestamp
+     */
+    async function fetchNewScrobblesFromApi(user, apiKey, maxTimestampMs, limit = 50) {
+        if (!user || !apiKey || apiKey.length < 16) {
+            return [];
+        }
+
+        const fromSec = Math.floor(maxTimestampMs / 1000) + 1;
+        const cleanUser = encodeURIComponent(String(user).trim());
+        const cleanKey = encodeURIComponent(String(apiKey).trim());
+
+        const allNewTracks = [];
+        let page = 1;
+        let totalPages = 1;
+        const maxPages = 5; // Safety cap (up to 1,000 tracks)
+
+        while (page <= totalPages && page <= maxPages) {
+            const url = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${cleanUser}&api_key=${cleanKey}&format=json&limit=${limit}&from=${fromSec}&page=${page}`;
+            const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!res.ok) {
+                throw new Error(`Last.fm API HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            if (data?.error) {
+                throw new Error(data.message || 'Ошибка Last.fm API');
+            }
+
+            const attr = data?.recenttracks?.['@attr'] || {};
+            totalPages = parseInt(attr.totalPages, 10) || 1;
+
+            const rawTracks = data?.recenttracks?.track || [];
+            const trackList = Array.isArray(rawTracks) ? rawTracks : [rawTracks];
+
+            for (let i = 0; i < trackList.length; i++) {
+                const norm = normalizeApiTrack(trackList[i]);
+                if (norm && !norm.nowPlaying && norm.date) {
+                    allNewTracks.push(norm);
+                }
+            }
+
+            page++;
+        }
+
+        return allNewTracks;
+    }
+
+    /**
+     * Poll Last.fm API for current track and latest completed track
+     */
+    async function pollLiveTrack(user, apiKey) {
+        if (!user || !apiKey || apiKey.length < 16) return null;
+        const cleanUser = encodeURIComponent(String(user).trim());
+        const cleanKey = encodeURIComponent(String(apiKey).trim());
+        const url = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${cleanUser}&api_key=${cleanKey}&format=json&limit=2`;
+
+        const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) throw new Error(`Last.fm API HTTP ${res.status}`);
+        const data = await res.json();
+        if (data?.error) throw new Error(data.message || 'Ошибка Last.fm');
+
+        const rawTracks = data?.recenttracks?.track || [];
+        const trackList = Array.isArray(rawTracks) ? rawTracks : (rawTracks ? [rawTracks] : []);
+
+        const first = trackList[0] ? normalizeApiTrack(trackList[0]) : null;
+        const second = trackList[1] ? normalizeApiTrack(trackList[1]) : null;
+
+        const isNowPlaying = Boolean(first && first.nowPlaying);
+        const nowPlayingTrack = isNowPlaying ? first : null;
+        const lastCompletedTrack = isNowPlaying ? second : first;
+
+        return {
+            isNowPlaying: isNowPlaying,
+            nowPlayingTrack: nowPlayingTrack,
+            lastCompletedTrack: lastCompletedTrack
+        };
     }
 
     function formatScrobbleDate(ts) {
@@ -215,6 +380,10 @@
     return {
         calculateStats: calculateStats,
         filterByPeriod: filterByPeriod,
+        normalizeApiTrack: normalizeApiTrack,
+        mergeScrobbles: mergeScrobbles,
+        fetchNewScrobblesFromApi: fetchNewScrobblesFromApi,
+        pollLiveTrack: pollLiveTrack,
         formatScrobbleDate: formatScrobbleDate,
         formatRelativeDate: formatRelativeDate
     };

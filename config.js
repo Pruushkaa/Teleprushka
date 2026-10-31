@@ -8,10 +8,12 @@
 
 // 1. Static Configuration Object
 window.APP_CONFIG = {
-    // Last.fm Scrobbler API
+    // Last.fm Scrobbler API (Public Hybrid Sync & Live Polling)
     LASTFM_USER: 'Pruushkaa',
+    // Публичный API-ключ Last.fm для живого обновления статистики и опроса текущего трека
+    // Бесплатная регистрация: https://www.last.fm/api/account/create
     LASTFM_API_KEY: '684b6a85757601272919018585e32a99',
-    LASTFM_POLL_INTERVAL_MS: 15000,
+    LASTFM_POLL_INTERVAL_MS: 30000, // Интервал опроса Now Playing: 30 секунд
     LASTFM_API_BASE: 'https://ws.audioscrobbler.com/2.0/',
 
     // iTunes Preview API
