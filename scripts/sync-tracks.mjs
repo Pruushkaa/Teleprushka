@@ -10,15 +10,19 @@ const rootDir = path.resolve(__dirname, '..');
 
 // Possible tracks folders to scan
 const candidateDirs = [
-    path.join(rootDir, 'tracks'),
     path.join(rootDir, 'public', 'tracks'),
+    path.join(rootDir, 'tracks'),
     path.join(rootDir, 'pruushkaa_archive', 'public', 'tracks')
 ];
 
-// Target manifest paths
+// Target manifest paths (includes public/tracks/manifest.json as primary static index)
 const manifestPaths = [
-    path.join(rootDir, 'tracks.json'),
+    path.join(rootDir, 'public', 'tracks', 'manifest.json'),
+    path.join(rootDir, 'tracks', 'manifest.json'),
+    path.join(rootDir, 'public', 'manifest.json'),
     path.join(rootDir, 'public', 'tracks.json'),
+    path.join(rootDir, 'tracks.json'),
+    path.join(rootDir, 'pruushkaa_archive', 'public', 'tracks', 'manifest.json'),
     path.join(rootDir, 'pruushkaa_archive', 'public', 'tracks.json')
 ];
 
@@ -180,15 +184,20 @@ function syncTracks() {
     }
 
     let existingTracks = [];
-    const primaryManifest = path.join(rootDir, 'tracks.json');
-    if (fs.existsSync(primaryManifest)) {
-        try {
-            const raw = fs.readFileSync(primaryManifest, 'utf8');
-            existingTracks = JSON.parse(raw);
-            if (!Array.isArray(existingTracks)) existingTracks = [];
-        } catch (e) {
-            console.warn(`[WARN] Could not parse existing tracks.json: ${e.message}`);
-            existingTracks = [];
+    const checkManifests = [
+        path.join(rootDir, 'public', 'tracks', 'manifest.json'),
+        path.join(rootDir, 'tracks.json')
+    ];
+    for (const cm of checkManifests) {
+        if (fs.existsSync(cm)) {
+            try {
+                const raw = fs.readFileSync(cm, 'utf8');
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    existingTracks = parsed;
+                    break;
+                }
+            } catch (e) {}
         }
     }
 
@@ -223,7 +232,7 @@ function syncTracks() {
             // Preserve existing custom fields, update/attach telemetry if missing
             finalTracks.push({
                 ...existing,
-                file: `tracks/${fileName}`,
+                file: `public/tracks/${fileName}`,
                 telemetry: existing.telemetry || telemetry
             });
             preservedCount++;
@@ -255,7 +264,7 @@ function syncTracks() {
             id,
             title,
             date: dateStr,
-            file: `tracks/${fileName}`,
+            file: `public/tracks/${fileName}`,
             description,
             tags,
             telemetry
@@ -272,10 +281,9 @@ function syncTracks() {
 
     for (const mPath of manifestPaths) {
         const dir = path.dirname(mPath);
-        if (fs.existsSync(dir)) {
-            fs.writeFileSync(mPath, manifestJson, 'utf8');
-            console.log(`  ✔ Manifest saved: ${path.relative(rootDir, mPath)}`);
-        }
+        ensureDir(dir);
+        fs.writeFileSync(mPath, manifestJson, 'utf8');
+        console.log(`  ✔ Manifest saved: ${path.relative(rootDir, mPath)}`);
     }
 
     for (const dir of candidateDirs) {

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "sync:tracks": "node scripts/sync-tracks.mjs",
-    "build": "node scripts/build.mjs",
+    "build": "node scripts/sync-tracks.mjs && node scripts/build.mjs",
     "generate:samples": "node scripts/generate-sample-tracks.mjs"
   },
   "dependencies": {
