@@ -1502,7 +1502,7 @@
                             <div>
                                 <div className="flex items-baseline gap-2 flex-wrap mb-1">
                                     <span className="font-mono text-2xl sm:text-3xl font-black text-black tracking-tight">
-                                        {(stats?.count || 40092).toLocaleString()}
+                                        {(stats?.count || 40211).toLocaleString()}
                                     </span>
                                     {newTracksCount > 0 && (
                                         <span className="font-mono text-[10px] font-black bg-[#CCFF00] text-black px-1.5 py-0.5 border border-black shadow-[1px_1px_0px_#000] animate-pulse">
@@ -1544,10 +1544,10 @@
                             </div>
                             <div>
                                 <div className="font-mono text-2xl sm:text-3xl font-black text-black tracking-tight mb-1">
-                                    {(stats?.uniqueArtists || 2427).toLocaleString()}
+                                    {(stats?.uniqueArtists || 2438).toLocaleString()}
                                 </div>
                                 <div className="font-mono text-[11px] text-neutral-500 font-bold">
-                                    {(stats?.uniqueTracks || 6465).toLocaleString()} треков
+                                    {(stats?.uniqueTracks || 6490).toLocaleString()} треков
                                 </div>
                             </div>
                         </div>
@@ -1792,6 +1792,18 @@
                 } catch (e) {}
                 return CONFIG.LASTFM_USER || 'Pruushkaa';
             });
+            const [liveUserInfo, setLiveUserInfo] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('pruushkaa_lastfm_user_info');
+                    if (saved) return JSON.parse(saved);
+                } catch (e) {}
+                return {
+                    artistCount: 2438,
+                    trackCount: 6490,
+                    playcount: 40211,
+                    albumCount: 2893
+                };
+            });
             const [liveTrack, setLiveTrack] = useState(null);
             const [liveStatus, setLiveStatus] = useState('OFFLINE'); // 'LIVE' | 'OFFLINE'
             const latestSeenDateRef = useRef(0);
@@ -1926,6 +1938,18 @@
                                         setActiveTrack(merged[merged.length - 1]);
                                     }
                                 }
+
+                                // Also fetch official user profile metrics from Last.fm (artist_count, playcount, track_count)
+                                try {
+                                    const uInfo = await window.MusicAnalytics.fetchUserInfo(lastFmUser, lastFmApiKey);
+                                    if (uInfo && isMounted) {
+                                        setLiveUserInfo(uInfo);
+                                        localStorage.setItem('pruushkaa_lastfm_user_info', JSON.stringify(uInfo));
+                                    }
+                                } catch (uErr) {
+                                    console.warn('Last.fm user.getinfo failed:', uErr);
+                                }
+
                                 setSyncStatus('SYNCED');
                             } catch (apiErr) {
                                 console.warn('Last.fm delta sync failed, falling back to offline archive:', apiErr);
@@ -1987,6 +2011,15 @@
                                 });
                             }
                         }
+
+                        // Refresh official user stats from Last.fm
+                        try {
+                            const uInfo = await window.MusicAnalytics.fetchUserInfo(lastFmUser, lastFmApiKey);
+                            if (uInfo && isMounted) {
+                                setLiveUserInfo(uInfo);
+                                localStorage.setItem('pruushkaa_lastfm_user_info', JSON.stringify(uInfo));
+                            }
+                        } catch (uErr) {}
                     } catch (e) {
                         // Silent fail for polling errors
                     }
@@ -2088,17 +2121,34 @@
             // Computed Stats based on periodFilter
             const currentStats = useMemo(() => {
                 const list = mergedScrobbles.length > 0 ? mergedScrobbles : archiveScrobbles;
+                let computed = null;
                 if (list && list.length > 0 && typeof window.MusicAnalytics !== 'undefined') {
                     const filtered = window.MusicAnalytics.filterByPeriod(list, periodFilter);
-                    return window.MusicAnalytics.calculateStats(filtered);
+                    computed = window.MusicAnalytics.calculateStats(filtered);
+                } else if (summaryData) {
+                    if (periodFilter === '30D') computed = summaryData.last30Days || summaryData.allTime;
+                    else if (periodFilter === '7D') computed = summaryData.last7Days || summaryData.allTime;
+                    else computed = summaryData.allTime;
                 }
 
-                // Otherwise fallback to precomputed summary slices
-                if (!summaryData) return null;
-                if (periodFilter === '30D') return summaryData.last30Days || summaryData.allTime;
-                if (periodFilter === '7D') return summaryData.last7Days || summaryData.allTime;
-                return summaryData.allTime;
-            }, [summaryData, mergedScrobbles, archiveScrobbles, periodFilter]);
+                if (!computed) return null;
+
+                // When viewing all-time stats, sync with official live metrics from Last.fm API
+                if (periodFilter === 'ALL' && liveUserInfo) {
+                    const officialArtists = liveUserInfo.artistCount || 0;
+                    const officialTracks = liveUserInfo.trackCount || 0;
+                    const officialCount = liveUserInfo.playcount || 0;
+
+                    return {
+                        ...computed,
+                        uniqueArtists: officialArtists ? Math.max(computed.uniqueArtists, officialArtists) : computed.uniqueArtists,
+                        uniqueTracks: officialTracks ? Math.max(computed.uniqueTracks, officialTracks) : computed.uniqueTracks,
+                        count: officialCount ? Math.max(computed.count, officialCount) : computed.count
+                    };
+                }
+
+                return computed;
+            }, [summaryData, mergedScrobbles, archiveScrobbles, periodFilter, liveUserInfo]);
 
             // CSV Export
             const handleExportCsv = () => {

@@ -352,6 +352,32 @@
         };
     }
 
+    /**
+     * Fetch user profile summary statistics from Last.fm API (artist_count, playcount, track_count, album_count)
+     */
+    async function fetchUserInfo(user, apiKey) {
+        if (!user || !apiKey || apiKey.length < 16) return null;
+        const cleanUser = encodeURIComponent(String(user).trim());
+        const cleanKey = encodeURIComponent(String(apiKey).trim());
+        const url = `https://ws.audioscrobbler.com/2.0/?method=user.getinfo&user=${cleanUser}&api_key=${cleanKey}&format=json`;
+
+        const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) throw new Error(`Last.fm API HTTP ${res.status}`);
+        const data = await res.json();
+        if (data?.error) throw new Error(data.message || 'Ошибка Last.fm');
+
+        const u = data?.user;
+        if (!u) return null;
+
+        return {
+            name: u.name,
+            playcount: parseInt(u.playcount, 10) || 0,
+            artistCount: parseInt(u.artist_count, 10) || 0,
+            trackCount: parseInt(u.track_count, 10) || 0,
+            albumCount: parseInt(u.album_count, 10) || 0
+        };
+    }
+
     function formatScrobbleDate(ts) {
         if (!ts) return '—';
         const d = new Date(ts);
@@ -384,6 +410,7 @@
         mergeScrobbles: mergeScrobbles,
         fetchNewScrobblesFromApi: fetchNewScrobblesFromApi,
         pollLiveTrack: pollLiveTrack,
+        fetchUserInfo: fetchUserInfo,
         formatScrobbleDate: formatScrobbleDate,
         formatRelativeDate: formatRelativeDate
     };
