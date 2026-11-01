@@ -65,7 +65,7 @@
     <!-- Единые базовые стили дизайн-системы -->
     <link rel="stylesheet" href="assets/css/base.css" />
 </head>
-<body class="min-h-screen relative selection:bg-[#FF5722] selection:text-white">
+<body class="theme-cyber min-h-screen relative selection:bg-[#FF5722] selection:text-white">
 
     <div id="root">
         <div class="min-h-screen flex items-center justify-center p-6 font-mono">
@@ -3976,7 +3976,15 @@
 
         const App = () => {
             const [sfxEnabled, setSfxEnabled] = useState(true);
-            const [darkMode, setDarkMode] = useState(false);
+            const [darkMode, setDarkMode] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('archive_theme');
+                    if (saved !== null) return saved === 'cyber';
+                    return true;
+                } catch (e) {
+                    return true;
+                }
+            });
             const [toast, setToast] = useState(null);
             const [discordCopied, setDiscordCopied] = useState(false);
             const [cmdOpen, setCmdOpen] = useState(false);
@@ -4197,8 +4205,12 @@
             useEffect(() => {
                 if (darkMode) {
                     document.body.classList.add('theme-cyber');
+                    document.body.classList.remove('theme-light');
+                    localStorage.setItem('archive_theme', 'cyber');
                 } else {
                     document.body.classList.remove('theme-cyber');
+                    document.body.classList.add('theme-light');
+                    localStorage.setItem('archive_theme', 'light');
                 }
             }, [darkMode]);
 
@@ -4628,23 +4640,23 @@
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     onMouseEnter={() => sfx.playHover()}
-                                    className="brutal-card brutal-card-interactive bg-[#FF5722] text-white p-5 cursor-pointer flex flex-col justify-between group"
+                                    className="brutal-card brutal-card-interactive nav-hub-card card-orange p-5 cursor-pointer flex flex-col justify-between group"
                                 >
                                     <div>
                                         <div className="flex items-center justify-between text-xs font-extrabold uppercase mb-2">
-                                            <span className="bg-black text-[#CCFF00] px-2 py-0.5">GPS // КАРТЫ</span>
-                                            <span className="border-2 border-black bg-white text-black px-2 py-0.5">{tracks.length} ТРЕКОВ</span>
+                                            <span className="bg-black/60 text-[#FF5722] border border-[#FF5722]/40 px-2 py-0.5">GPS // КАРТЫ</span>
+                                            <span className="font-mono text-xs font-bold px-2 py-0.5 bg-black/50 text-[#FF5722] border border-[#FF5722]/30">{tracks.length} ТРЕКОВ</span>
                                         </div>
-                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2 text-white">
+                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2 text-white group-hover:text-[#FF5722] transition-colors">
                                             МАРШРУТЫ GPX →
                                         </h3>
-                                        <p className="text-xs font-bold text-neutral-100 line-clamp-2">
+                                        <p className="text-xs font-medium text-[#a0a0a0] line-clamp-2 leading-relaxed">
                                             Интерактивная карта заездов, телеметрия высот, скоростные треки и Drag & Drop.
                                         </p>
                                     </div>
-                                    <div className="mt-4 pt-3 border-t-2 border-black flex items-center justify-between text-xs font-extrabold">
+                                    <div className="mt-4 pt-3 border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between text-xs font-extrabold text-[#a0a0a0] group-hover:text-[#FF5722] transition-colors">
                                         <span>ОТКРЫТЬ КАРТУ</span>
-                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform text-[#FF5722]"></i>
                                     </div>
                                 </div>
 
@@ -4655,23 +4667,23 @@
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     onMouseEnter={() => sfx.playHover()}
-                                    className="brutal-card brutal-card-interactive bg-[#CCFF00] p-5 cursor-pointer flex flex-col justify-between group"
+                                    className="brutal-card brutal-card-interactive nav-hub-card card-lime p-5 cursor-pointer flex flex-col justify-between group"
                                 >
                                     <div>
                                         <div className="flex items-center justify-between text-xs font-extrabold uppercase mb-2">
-                                            <span className="bg-black text-[#CCFF00] px-2 py-0.5">VAULT // МЕДИА</span>
-                                            <span className="border-2 border-black bg-white px-2 py-0.5">{photos.length} КАДРОВ</span>
+                                            <span className="bg-black/60 text-[#CCFF00] border border-[#CCFF00]/40 px-2 py-0.5">VAULT // МЕДИА</span>
+                                            <span className="font-mono text-xs font-bold px-2 py-0.5 bg-black/50 text-[#CCFF00] border border-[#CCFF00]/30">{photos.length} КАДРОВ</span>
                                         </div>
-                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2">
+                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2 text-white group-hover:text-[#CCFF00] transition-colors">
                                             ФОТОАРХИВ →
                                         </h3>
-                                        <p className="text-xs font-bold text-neutral-800 line-clamp-2">
+                                        <p className="text-xs font-medium text-[#a0a0a0] line-clamp-2 leading-relaxed">
                                             Хроника событий, архивные снимки серверов и медиа-материалы проекта.
                                         </p>
                                     </div>
-                                    <div className="mt-4 pt-3 border-t-2 border-black flex items-center justify-between text-xs font-extrabold">
+                                    <div className="mt-4 pt-3 border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between text-xs font-extrabold text-[#a0a0a0] group-hover:text-[#CCFF00] transition-colors">
                                         <span>ОТКРЫТЬ КАДРЫ</span>
-                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform text-[#CCFF00]"></i>
                                     </div>
                                 </div>
 
@@ -4682,23 +4694,23 @@
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     onMouseEnter={() => sfx.playHover()}
-                                    className="brutal-card brutal-card-interactive bg-[#00E5FF] p-5 cursor-pointer flex flex-col justify-between group"
+                                    className="brutal-card brutal-card-interactive nav-hub-card card-cyan p-5 cursor-pointer flex flex-col justify-between group"
                                 >
                                     <div>
                                         <div className="flex items-center justify-between text-xs font-extrabold uppercase mb-2">
-                                            <span className="bg-black text-[#00E5FF] px-2 py-0.5">DOCS // РЕЕСТР</span>
-                                            <span className="border-2 border-black bg-white px-2 py-0.5">{wikiArticles.length} СТАТЕЙ</span>
+                                            <span className="bg-black/60 text-[#00E5FF] border border-[#00E5FF]/40 px-2 py-0.5">DOCS // РЕЕСТР</span>
+                                            <span className="font-mono text-xs font-bold px-2 py-0.5 bg-black/50 text-[#00E5FF] border border-[#00E5FF]/30">{wikiArticles.length} СТАТЕЙ</span>
                                         </div>
-                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2">
+                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2 text-white group-hover:text-[#00E5FF] transition-colors">
                                             ВИКИ СРП →
                                         </h3>
-                                        <p className="text-xs font-bold text-neutral-800 line-clamp-2">
+                                        <p className="text-xs font-medium text-[#a0a0a0] line-clamp-2 leading-relaxed">
                                             История Социалистической рабочей партии, революция на BloodyVanilla 2, устав и лор.
                                         </p>
                                     </div>
-                                    <div className="mt-4 pt-3 border-t-2 border-black flex items-center justify-between text-xs font-extrabold">
+                                    <div className="mt-4 pt-3 border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between text-xs font-extrabold text-[#a0a0a0] group-hover:text-[#00E5FF] transition-colors">
                                         <span>ЧИТАТЬ СТАТЬИ</span>
-                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform text-[#00E5FF]"></i>
                                     </div>
                                 </div>
 
@@ -4709,23 +4721,23 @@
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     onMouseEnter={() => sfx.playHover()}
-                                    className="brutal-card brutal-card-interactive bg-[#F4F0EA] p-5 cursor-pointer flex flex-col justify-between group"
+                                    className="brutal-card brutal-card-interactive nav-hub-card card-violet p-5 cursor-pointer flex flex-col justify-between group"
                                 >
                                     <div>
                                         <div className="flex items-center justify-between text-xs font-extrabold uppercase mb-2">
-                                            <span className="bg-black text-white px-2 py-0.5">SYS // ТЕРМИНАЛ</span>
-                                            <span className="border-2 border-black bg-white px-2 py-0.5">ONLINE</span>
+                                            <span className="bg-black/60 text-[#B388FF] border border-[#B388FF]/40 px-2 py-0.5">SYS // ТЕРМИНАЛ</span>
+                                            <span className="font-mono text-xs font-bold px-2 py-0.5 bg-black/50 text-[#B388FF] border border-[#B388FF]/30">ONLINE</span>
                                         </div>
-                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2">
+                                        <h3 className="text-xl font-extrabold uppercase tracking-tight mb-2 text-white group-hover:text-[#B388FF] transition-colors">
                                             ТЕРМИНАЛ УТИЛИТ →
                                         </h3>
-                                        <p className="text-xs font-bold text-neutral-800 line-clamp-2">
+                                        <p className="text-xs font-medium text-[#a0a0a0] line-clamp-2 leading-relaxed">
                                             Генераторы, аудит системы, тестовые сигналы и звуковой движок.
                                         </p>
                                     </div>
-                                    <div className="mt-4 pt-3 border-t-2 border-black flex items-center justify-between text-xs font-extrabold">
+                                    <div className="mt-4 pt-3 border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between text-xs font-extrabold text-[#a0a0a0] group-hover:text-[#B388FF] transition-colors">
                                         <span>ЗАПУСТИТЬ ДЕКУ</span>
-                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                                        <i className="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform text-[#B388FF]"></i>
                                     </div>
                                 </div>
                             </div>
