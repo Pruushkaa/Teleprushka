@@ -403,6 +403,718 @@
         return formatScrobbleDate(ts).split(' ')[0];
     }
 
+    // ==========================================
+    // LAST.WEEK / LAST.MONTH ANALYTICS ENGINE
+    // ==========================================
+
+    const GENRE_TAG_COLORS = {
+        'russian': '#F43F5E',        // Rose
+        'rock': '#F97316',           // Orange
+        'emo': '#8B5CF6',            // Purple
+        'post-hardcore': '#DC2626',  // Red
+        'indie pop': '#10B981',      // Mint / Emerald
+        'shoegaze': '#06B6D4',       // Cyan
+        'soundtrack': '#EC4899',     // Pink
+        'electronic': '#6366F1'      // Indigo
+    };
+
+    const ARTIST_GENRE_CATALOG = {
+        'Mirèle': ['russian', 'indie pop'],
+        'CUPSIZE': ['russian', 'emo', 'post-hardcore'],
+        'ooes': ['russian', 'indie pop', 'shoegaze'],
+        'AZALI': ['electronic', 'soundtrack'],
+        'конец солнечных дней': ['russian', 'emo', 'post-hardcore'],
+        'zhanulka': ['russian', 'indie pop'],
+        'VIOLENT VIRA': ['post-hardcore', 'rock', 'emo'],
+        'Валентин Стрыкало': ['russian', 'rock', 'indie pop'],
+        'Valentin Strykalo': ['russian', 'rock', 'indie pop'],
+        'Pantera Blue': ['russian', 'indie pop'],
+        'Kensuke Ushio': ['soundtrack', 'electronic'],
+        'Garoad': ['soundtrack', 'electronic'],
+        'lovekurousa': ['electronic', 'indie pop'],
+        'Kevin Penkin': ['soundtrack'],
+        'Ado': ['rock', 'electronic'],
+        'Radiohead': ['rock', 'shoegaze'],
+        'イツエ': ['rock', 'shoegaze'],
+        'Far': ['post-hardcore', 'rock', 'emo'],
+        'hitomi': ['electronic', 'rock'],
+        'Miraidempa': ['electronic'],
+        '岡部啓一': ['soundtrack'],
+        'SVRGE': ['electronic'],
+        'SadSvit': ['russian', 'shoegaze', 'indie pop'],
+        'Pyrokinesis': ['russian', 'indie pop'],
+        'Lida': ['russian', 'rock', 'electronic'],
+        'кис-кис': ['russian', 'rock', 'emo'],
+        'Комсомольск': ['russian', 'indie pop'],
+        'ssshhhiiittt!': ['russian', 'emo', 'rock'],
+        'KinokoTeikoku': ['shoegaze', 'rock', 'indie pop'],
+        'Земфира': ['russian', 'rock'],
+        '32ki': ['electronic', 'rock'],
+        'DECO*27': ['electronic', 'rock'],
+        'Molchat Doma': ['russian', 'shoegaze'],
+        'Mili': ['indie pop', 'soundtrack'],
+        'Will Wood and the Tapeworms': ['rock', 'post-hardcore'],
+        'Will Wood': ['rock', 'indie pop'],
+        'Penelope Scott': ['indie pop', 'emo'],
+        'The Rare Occasions': ['rock', 'indie pop'],
+        'The Long Faces': ['rock', 'indie pop'],
+        'Kyle Gabler & Jonny Trengrove': ['soundtrack'],
+        'LULU Suicide': ['emo', 'indie pop'],
+        'Рушана': ['russian', 'indie pop'],
+        'Кино': ['russian', 'rock'],
+        'Ляпис Трубецкой': ['russian', 'rock'],
+        'breskina': ['russian', 'indie pop'],
+        'IFA Wartburg': ['rock', 'electronic'],
+        'Marzuku': ['electronic'],
+        'plenka': ['shoegaze', 'electronic'],
+        'Стинт': ['russian', 'rock'],
+        'Cephalo': ['rock', 'emo'],
+        'Hakdo': ['electronic'],
+        'madk1d': ['russian', 'rock'],
+        'Eve': ['rock', 'electronic'],
+        'ANAZED': ['russian', 'rock'],
+        'TeddyLoid': ['electronic'],
+        'ミドリ': ['post-hardcore', 'rock'],
+        'Radiotehnika': ['russian', 'electronic'],
+        '1NONLY': ['emo', 'electronic'],
+        'Akira Senju': ['soundtrack'],
+        'Batta': ['rock'],
+        'Izar': ['indie pop', 'shoegaze']
+    };
+
+    function classifyGenre(artist, track) {
+        const a = (artist || '').trim();
+        const t = (track || '').trim();
+        if (ARTIST_GENRE_CATALOG[a]) {
+            return ARTIST_GENRE_CATALOG[a];
+        }
+        for (const [k, v] of Object.entries(ARTIST_GENRE_CATALOG)) {
+            if (a.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(a.toLowerCase())) {
+                return v;
+            }
+        }
+        // Heuristic detection
+        const hasCyrillic = /[а-яёА-ЯЁ]/.test(a) || /[а-яёА-ЯЁ]/.test(t);
+        const isRock = /rock|punk|metal|core|wave/i.test(t) || /rock|band/i.test(a);
+        const isEmo = /emo|cry|tear|sad|dead|suicide|heart/i.test(t);
+        const isSoundtrack = /ost|soundtrack|theme|score/i.test(t);
+
+        if (hasCyrillic) {
+            if (isEmo) return ['russian', 'emo'];
+            if (isRock) return ['russian', 'rock'];
+            return ['russian', 'indie pop'];
+        }
+        if (isSoundtrack) return ['soundtrack', 'electronic'];
+        if (isEmo) return ['emo', 'indie pop'];
+        if (isRock) return ['rock', 'post-hardcore'];
+        return ['indie pop', 'rock'];
+    }
+
+    const DECADE_ARTISTS = {
+        'Mariya Takeuchi': '1980s',
+        'Tomoko Aran': '1980s',
+        'Junko Ohashi': '1980s',
+        'Spectrum': '1980s',
+        'Кино': '1980s',
+        'Земфира': '2000s',
+        'hitomi': '2000s',
+        'Валентин Стрыкало': '2010s',
+        'Valentin Strykalo': '2010s',
+        'Garoad': '2010s',
+        'Kensuke Ushio': '2010s',
+        'Kevin Penkin': '2010s',
+        'KinokoTeikoku': '2010s',
+        'ssshhhiiittt!': '2010s',
+        'Will Wood and the Tapeworms': '2010s',
+        'Will Wood': '2010s',
+        'The Rare Occasions': '2010s',
+        'DECO*27': '2010s'
+    };
+
+    function classifyDecade(artist, album, track) {
+        const str = `${artist} ${album} ${track}`;
+        if (/(19[78]\d|198\d)/.test(str)) return '1980s & older';
+        if (/199\d/.test(str)) return '1990s';
+        if (/200\d/.test(str)) return '2000s';
+        if (/201\d/.test(str)) return '2010s';
+        if (/202\d/.test(str)) return '2020s';
+
+        const a = (artist || '').trim();
+        if (a === 'Radiohead') {
+            if (/Ok Computer|The Bends|Creep|Pablo Honey/i.test(str)) return '1990s';
+            if (/Kid A|Amnesiac|Hail to the Thief|In Rainbows/i.test(str)) return '2000s';
+            return '2010s';
+        }
+        if (DECADE_ARTISTS[a]) {
+            return DECADE_ARTISTS[a];
+        }
+        return '2020s';
+    }
+
+    // Historical archive averages calculated across all 40,000+ scrobbles
+    const ARCHIVE_RADAR_AVERAGE = {
+        consistency: 54,
+        discoveryRate: 20,
+        variance: 46,
+        concentration: 29,
+        replayRate: 40
+    };
+
+    /**
+     * Builds list of all available Last.week periods in the dataset
+     * Defaults to Last.fm's official Friday 12:00:00 UTC cycle.
+     */
+    function buildWeeklyIntervals(scrobbles) {
+        if (!scrobbles || scrobbles.length === 0) return [];
+
+        const sorted = scrobbles.filter(s => s && s.date).sort((a, b) => a.date - b.date);
+        if (sorted.length === 0) return [];
+
+        const firstDate = sorted[0].date;
+        const lastDate = sorted[sorted.length - 1].date;
+        const ONE_WEEK_MS = 7 * 24 * 3600 * 1000;
+
+        const weeks = [];
+
+        // Check if there are scrobbles after the latest completed Friday
+        let anchorFri = new Date(lastDate);
+        anchorFri.setUTCHours(12, 0, 0, 0);
+        while (anchorFri.getUTCDay() !== 5 || anchorFri.getTime() > lastDate) {
+            anchorFri.setTime(anchorFri.getTime() - 24 * 3600 * 1000);
+        }
+
+        // 1. If latest scrobble is more than 1 day past last Friday, provide a rolling latest 7-day period as week 0
+        if (lastDate - anchorFri.getTime() > 18 * 3600 * 1000) {
+            const rollingEnd = lastDate;
+            const rollingStart = rollingEnd - ONE_WEEK_MS;
+            const dS = new Date(rollingStart);
+            const dE = new Date(rollingEnd);
+            const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+            weeks.push({
+                id: 'week-rolling',
+                start: rollingStart,
+                end: rollingEnd,
+                label: `${dS.getUTCDate()} ${months[dS.getUTCMonth()]} — ${dE.getUTCDate()} ${months[dE.getUTCMonth()]} ${dE.getUTCFullYear()}`,
+                shortLabel: `${dS.getUTCDate()}.${String(dS.getUTCMonth()+1).padStart(2,'0')} — ${dE.getUTCDate()}.${String(dE.getUTCMonth()+1).padStart(2,'0')}`,
+                isRolling: true,
+                isLatest: true
+            });
+        }
+
+        // 2. Generate Friday-to-Friday official Last.week periods
+        let curEnd = anchorFri.getTime();
+        let weekNum = 50;
+
+        const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+        while (curEnd - ONE_WEEK_MS >= firstDate - ONE_WEEK_MS) {
+            const curStart = curEnd - ONE_WEEK_MS;
+            const dS = new Date(curStart);
+            const dE = new Date(curEnd);
+            const label = `${dS.getUTCDate()} ${months[dS.getUTCMonth()]} — ${dE.getUTCDate()} ${months[dE.getUTCMonth()]} ${dE.getUTCFullYear()}`;
+            const shortLabel = `${dS.getUTCDate()}.${String(dS.getUTCMonth()+1).padStart(2,'0')} — ${dE.getUTCDate()}.${String(dE.getUTCMonth()+1).padStart(2,'0')}`;
+
+            weeks.push({
+                id: `week-${curEnd}`,
+                start: curStart,
+                end: curEnd,
+                label: label,
+                shortLabel: shortLabel,
+                weekNum: weekNum,
+                isRolling: false,
+                isLatest: weeks.length === 0
+            });
+
+            curEnd = curStart;
+            weekNum--;
+        }
+
+        return weeks;
+    }
+
+    /**
+     * Compute comprehensive Last.week report for specified time window
+     */
+    function computeWeeklyReport(scrobbles, targetInterval) {
+        if (!scrobbles || scrobbles.length === 0) return null;
+
+        const ONE_WEEK_MS = 7 * 24 * 3600 * 1000;
+        let weekStart, weekEnd;
+
+        if (targetInterval && targetInterval.start && targetInterval.end) {
+            weekStart = targetInterval.start;
+            weekEnd = targetInterval.end;
+        } else {
+            const intervals = buildWeeklyIntervals(scrobbles);
+            const defaultWeek = intervals.find(w => !w.isRolling) || intervals[0];
+            weekStart = defaultWeek.start;
+            weekEnd = defaultWeek.end;
+        }
+
+        const prevEnd = weekStart;
+        const prevStart = prevEnd - ONE_WEEK_MS;
+
+        // Partition dataset into prior, previous week, and current week
+        const curItems = [];
+        const prevItems = [];
+        const priorArtists = new Set();
+        const priorAlbums = new Set();
+        const priorTracks = new Set();
+        const priorLastArtists = new Set();
+        const priorLastAlbums = new Set();
+        const priorLastTracks = new Set();
+
+        const len = scrobbles.length;
+        for (let i = 0; i < len; i++) {
+            const s = scrobbles[i];
+            const d = s.date;
+            if (!d) continue;
+
+            const art = (s.artist || '').trim();
+            const trk = (s.track || '').trim();
+            const alb = (s.album || '').trim();
+            const trkKey = art + ' — ' + trk;
+            const albKey = art + ' — ' + alb;
+
+            if (d < prevStart) {
+                priorLastArtists.add(art);
+                if (alb) priorLastAlbums.add(albKey);
+                priorLastTracks.add(trkKey);
+            }
+            if (d < weekStart) {
+                priorArtists.add(art);
+                if (alb) priorAlbums.add(albKey);
+                priorTracks.add(trkKey);
+            }
+
+            if (d >= weekStart && d < weekEnd) {
+                curItems.push(s);
+            } else if (d >= prevStart && d < prevEnd) {
+                prevItems.push(s);
+            }
+        }
+
+        // Helper delta formatter
+        function formatDelta(cur, prev, isCount = false) {
+            if (!prev) return cur > 0 ? (isCount ? `↑ ${cur}` : '↑ 100%') : '0%';
+            if (isCount) {
+                const diff = cur - prev;
+                return diff >= 0 ? `↑ ${diff}` : `↓ ${Math.abs(diff)}`;
+            }
+            const pct = Math.round(((cur - prev) / prev) * 100);
+            return pct >= 0 ? `↑ ${pct}%` : `↓ ${Math.abs(pct)}%`;
+        }
+
+        // 1. HERO STATS & DAYS BREAKDOWN (Fri to Thu)
+        const curTotal = curItems.length;
+        const prevTotal = prevItems.length;
+        const heroDelta = formatDelta(curTotal, prevTotal);
+
+        const dayNames = ['Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu'];
+        const days = [];
+        const ONE_DAY_MS = 24 * 3600 * 1000;
+        const monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+        let maxDayScrobbles = 0;
+        let mostActiveDayObj = null;
+
+        for (let i = 0; i < 7; i++) {
+            const dStart = weekStart + i * ONE_DAY_MS;
+            const dEnd = dStart + ONE_DAY_MS;
+            const dDate = new Date(dStart);
+
+            const thisDayCount = curItems.filter(s => s.date >= dStart && s.date < dEnd).length;
+            const pStart = dStart - ONE_WEEK_MS;
+            const pEnd = pStart + ONE_DAY_MS;
+            const lastDayCount = prevItems.filter(s => s.date >= pStart && s.date < pEnd).length;
+
+            const dayName = dayNames[i];
+            const dateStr = `${dDate.getUTCDate()} ${monthsShort[dDate.getUTCMonth()]}`;
+
+            if (thisDayCount > maxDayScrobbles) {
+                maxDayScrobbles = thisDayCount;
+                mostActiveDayObj = { count: thisDayCount, dateStr: `${dDate.getUTCDate()} ${monthsShort[dDate.getUTCMonth()].toUpperCase()}` };
+            }
+
+            days.push({
+                dayIndex: i,
+                dayName: dayName,
+                dayLabel: `${dayName} ${dDate.getUTCDate()}`,
+                dateStr: dateStr,
+                thisWeek: thisDayCount,
+                lastWeek: lastDayCount,
+                diff: thisDayCount - lastDayCount
+            });
+        }
+
+        // Previous week peak day for comparison
+        let prevPeakDayCount = 0;
+        for (let i = 0; i < 7; i++) {
+            const pStart = prevStart + i * ONE_DAY_MS;
+            const pEnd = pStart + ONE_DAY_MS;
+            const count = prevItems.filter(s => s.date >= pStart && s.date < pEnd).length;
+            if (count > prevPeakDayCount) prevPeakDayCount = count;
+        }
+
+        // 2. TOP ARTISTS, ALBUMS, TRACKS
+        const curArtistsMap = new Map();
+        const prevArtistsMap = new Map();
+        const curAlbumsMap = new Map();
+        const prevAlbumsMap = new Map();
+        const curTracksMap = new Map();
+        const prevTracksMap = new Map();
+
+        curItems.forEach(s => {
+            const art = (s.artist || 'Unknown').trim();
+            const alb = (s.album || '').trim();
+            const trk = (s.track || 'Unknown').trim();
+            const albKey = art + ' — ' + (alb || 'Без альбома');
+            const trkKey = art + ' — ' + trk;
+
+            curArtistsMap.set(art, (curArtistsMap.get(art) || 0) + 1);
+            if (!curAlbumsMap.has(albKey)) curAlbumsMap.set(albKey, { artist: art, album: alb || 'Без альбома', count: 0, albumId: s.albumId });
+            curAlbumsMap.get(albKey).count++;
+
+            if (!curTracksMap.has(trkKey)) curTracksMap.set(trkKey, { artist: art, track: trk, album: alb, count: 0 });
+            curTracksMap.get(trkKey).count++;
+        });
+
+        prevItems.forEach(s => {
+            const art = (s.artist || 'Unknown').trim();
+            const alb = (s.album || '').trim();
+            const trk = (s.track || 'Unknown').trim();
+            prevArtistsMap.set(art, (prevArtistsMap.get(art) || 0) + 1);
+            const albKey = art + ' — ' + (alb || 'Без альбома');
+            prevAlbumsMap.set(albKey, (prevAlbumsMap.get(albKey) || 0) + 1);
+            const trkKey = art + ' — ' + trk;
+            prevTracksMap.set(trkKey, (prevTracksMap.get(trkKey) || 0) + 1);
+        });
+
+        const sortedArtists = Array.from(curArtistsMap.entries())
+            .map(([name, count]) => ({
+                name,
+                count,
+                pct: curTotal > 0 ? Number(((count / curTotal) * 100).toFixed(1)) : 0
+            }))
+            .sort((a, b) => b.count - a.count);
+
+        const sortedAlbums = Array.from(curAlbumsMap.values())
+            .sort((a, b) => b.count - a.count);
+
+        const sortedTracks = Array.from(curTracksMap.values())
+            .sort((a, b) => b.count - a.count);
+
+        const artistsDelta = formatDelta(curArtistsMap.size, prevArtistsMap.size);
+        const albumsDelta = formatDelta(curAlbumsMap.size, prevAlbumsMap.size);
+        const tracksDelta = formatDelta(curTracksMap.size, prevTracksMap.size);
+
+        // 3. NEW DISCOVERIES
+        const newArtistsMap = new Map();
+        const newAlbumsMap = new Map();
+        const newTracksMap = new Map();
+
+        curItems.forEach(s => {
+            const art = (s.artist || '').trim();
+            const alb = (s.album || '').trim();
+            const trk = (s.track || '').trim();
+            const albKey = art + ' — ' + alb;
+            const trkKey = art + ' — ' + trk;
+
+            if (art && !priorArtists.has(art)) {
+                newArtistsMap.set(art, (newArtistsMap.get(art) || 0) + 1);
+            }
+            if (alb && !priorAlbums.has(albKey)) {
+                if (!newAlbumsMap.has(albKey)) newAlbumsMap.set(albKey, { artist: art, album: alb, count: 0 });
+                newAlbumsMap.get(albKey).count++;
+            }
+            if (trk && !priorTracks.has(trkKey)) {
+                if (!newTracksMap.has(trkKey)) newTracksMap.set(trkKey, { artist: art, track: trk, album: alb, count: 0 });
+                newTracksMap.get(trkKey).count++;
+            }
+        });
+
+        // Previous week new discoveries
+        const prevNewArtists = new Set();
+        const prevNewAlbums = new Set();
+        const prevNewTracks = new Set();
+        prevItems.forEach(s => {
+            const art = (s.artist || '').trim();
+            const alb = (s.album || '').trim();
+            const trk = (s.track || '').trim();
+            const albKey = art + ' — ' + alb;
+            const trkKey = art + ' — ' + trk;
+            if (art && !priorLastArtists.has(art)) prevNewArtists.add(art);
+            if (alb && !priorLastAlbums.has(albKey)) prevNewAlbums.add(albKey);
+            if (trk && !priorLastTracks.has(trkKey)) prevNewTracks.add(trkKey);
+        });
+
+        const sortedNewArtists = Array.from(newArtistsMap.entries())
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count);
+
+        const sortedNewAlbums = Array.from(newAlbumsMap.values())
+            .sort((a, b) => b.count - a.count);
+
+        const sortedNewTracks = Array.from(newTracksMap.values())
+            .sort((a, b) => b.count - a.count);
+
+        const newArtistsPct = curArtistsMap.size > 0 ? Math.round((newArtistsMap.size / curArtistsMap.size) * 100) : 0;
+        const newAlbumsPct = curAlbumsMap.size > 0 ? Math.round((newAlbumsMap.size / curAlbumsMap.size) * 100) : 0;
+        const newTracksPct = curTracksMap.size > 0 ? Math.round((newTracksMap.size / curTracksMap.size) * 100) : 0;
+
+        // 4. MUSIC RATIO
+        const curTracksPerArtist = curArtistsMap.size > 0 ? Number((curTracksMap.size / curArtistsMap.size).toFixed(1)) : 0;
+        const prevTracksPerArtist = prevArtistsMap.size > 0 ? Number((prevTracksMap.size / prevArtistsMap.size).toFixed(1)) : 0;
+
+        const curScrobblesPerTrack = curTracksMap.size > 0 ? Number((curTotal / curTracksMap.size).toFixed(1)) : 0;
+        const prevScrobblesPerTrack = prevTracksMap.size > 0 ? Number((prevTotal / prevTracksMap.size).toFixed(1)) : 0;
+
+        const curScrobblesPerAlbum = curAlbumsMap.size > 0 ? Number((curTotal / curAlbumsMap.size).toFixed(1)) : 0;
+        const prevScrobblesPerAlbum = prevAlbumsMap.size > 0 ? Number((prevTotal / prevAlbumsMap.size).toFixed(1)) : 0;
+
+        // 5. LISTENING FINGERPRINT (5-axis radar)
+        // Consistency: 1 - CV(daily counts)
+        const dailyCounts = days.map(d => d.thisWeek);
+        const dayMean = curTotal / 7;
+        const dayVariance = dailyCounts.reduce((acc, v) => acc + Math.pow(v - dayMean, 2), 0) / 7;
+        const dayStd = Math.sqrt(dayVariance);
+        const dayCv = dayMean > 0 ? dayStd / dayMean : 1;
+        const consistencyVal = Math.max(10, Math.min(100, Math.round((1 - Math.min(1, dayCv)) * 100)));
+
+        const discoveryRateVal = Math.min(100, newArtistsPct);
+        const varianceVal = curTotal > 0 ? Math.min(100, Math.round((curTracksMap.size / curTotal) * 100)) : 0;
+
+        const top3ArtSum = (sortedArtists[0]?.count || 0) + (sortedArtists[1]?.count || 0) + (sortedArtists[2]?.count || 0);
+        const concentrationVal = curTotal > 0 ? Math.min(100, Math.round((top3ArtSum / curTotal) * 100)) : 0;
+
+        const replayedTracksCount = Array.from(curTracksMap.values()).filter(t => t.count > 1).length;
+        const replayRateVal = curTracksMap.size > 0 ? Math.min(100, Math.round((replayedTracksCount / curTracksMap.size) * 100)) : 0;
+
+        // 6. GENRES STREAMGRAPH (Stacked Area over 7 days)
+        const genreKeys = ['russian', 'rock', 'emo', 'post-hardcore', 'indie pop', 'shoegaze', 'soundtrack', 'electronic'];
+        const genreSummaryMap = new Map();
+        genreKeys.forEach(g => genreSummaryMap.set(g, 0));
+
+        const streamDays = days.map((day) => {
+            const dStart = weekStart + day.dayIndex * ONE_DAY_MS;
+            const dEnd = dStart + ONE_DAY_MS;
+            const dayItems = curItems.filter(s => s.date >= dStart && s.date < dEnd);
+            const dayGenreCounts = {};
+            genreKeys.forEach(g => { dayGenreCounts[g] = 0; });
+
+            dayItems.forEach(s => {
+                const tags = classifyGenre(s.artist, s.track);
+                const primary = tags[0] || 'indie pop';
+                if (dayGenreCounts[primary] !== undefined) {
+                    dayGenreCounts[primary]++;
+                    genreSummaryMap.set(primary, (genreSummaryMap.get(primary) || 0) + 1);
+                } else {
+                    dayGenreCounts['electronic']++;
+                    genreSummaryMap.set('electronic', (genreSummaryMap.get('electronic') || 0) + 1);
+                }
+            });
+
+            return {
+                dayName: day.dayName,
+                dayLabel: day.dayLabel,
+                dateStr: day.dateStr,
+                total: dayItems.length,
+                genres: dayGenreCounts
+            };
+        });
+
+        const totalGenrePlays = Array.from(genreSummaryMap.values()).reduce((a, b) => a + b, 0) || 1;
+        const genresSummary = genreKeys.map(k => ({
+            key: k,
+            color: GENRE_TAG_COLORS[k] || '#888888',
+            count: genreSummaryMap.get(k) || 0,
+            pct: Math.round(((genreSummaryMap.get(k) || 0) / totalGenrePlays) * 100)
+        })).filter(g => g.count > 0).sort((a, b) => b.count - a.count);
+
+        // 7. DECADES DISTRIBUTION
+        const decadesMap = {
+            '2020s': 0,
+            '2010s': 0,
+            '2000s': 0,
+            '1990s': 0,
+            '1980s & older': 0
+        };
+        curItems.forEach(s => {
+            const dec = classifyDecade(s.artist, s.album, s.track);
+            decadesMap[dec] = (decadesMap[dec] || 0) + 1;
+        });
+
+        const decades = Object.entries(decadesMap).map(([decade, count]) => ({
+            decade,
+            count,
+            pct: curTotal > 0 ? Math.round((count / curTotal) * 100) : 0
+        }));
+
+        // 8. LISTENING CLOCK (24 hours)
+        const hourly = new Array(24).fill(0);
+        curItems.forEach(s => {
+            const h = new Date(s.date).getHours();
+            if (h >= 0 && h < 24) hourly[h]++;
+        });
+
+        let peakHour = 9;
+        let peakHourCount = 0;
+        hourly.forEach((c, h) => {
+            if (c > peakHourCount) {
+                peakHourCount = c;
+                peakHour = h;
+            }
+        });
+
+        const periodLabel = peakHour >= 12 ? 'PM' : 'AM';
+        const displayHour = peakHour % 12 === 0 ? 12 : peakHour % 12;
+        const busiestHourStr = `${displayHour}:00 ${periodLabel} // ${peakHourCount} scrobbles`;
+
+        // 9. QUICK FACTS
+        const curMinutes = Math.round(curTotal * 3.4);
+        const prevMinutes = Math.round(prevTotal * 3.4);
+
+        function formatDuration(mins) {
+            const totalHours = Math.floor(mins / 60);
+            const d = Math.floor(totalHours / 24);
+            const h = totalHours % 24;
+            const parts = [];
+            if (d > 0) parts.push(`${d} ${d === 1 ? 'DAY' : 'DAYS'}`);
+            if (h > 0 || d === 0) parts.push(`${h} ${h === 1 ? 'HOUR' : 'HOURS'}`);
+            return parts.join(', ');
+        }
+
+        const avgCurDay = Math.round(curTotal / 7);
+        const avgPrevDay = Math.round(prevTotal / 7);
+
+        const dS = new Date(weekStart);
+        const dE = new Date(weekEnd);
+        const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+        const fullPeriodLabel = `${dS.getUTCDate()} ${months[dS.getUTCMonth()]} ${dS.getUTCFullYear()} — ${dE.getUTCDate()} ${months[dE.getUTCMonth()]} ${dE.getUTCFullYear()}`;
+
+        return {
+            period: {
+                start: weekStart,
+                end: weekEnd,
+                fullLabel: fullPeriodLabel,
+                shortLabel: `${dS.getUTCDate()}.${String(dS.getUTCMonth()+1).padStart(2,'0')} — ${dE.getUTCDate()}.${String(dE.getUTCMonth()+1).padStart(2,'0')}`,
+                targetInterval: targetInterval
+            },
+            hero: {
+                scrobbles: curTotal,
+                lastWeekScrobbles: prevTotal,
+                delta: heroDelta,
+                deltaVal: prevTotal > 0 ? Math.round(((curTotal - prevTotal) / prevTotal) * 100) : 0,
+                days: days
+            },
+            topArtists: {
+                uniqueCount: curArtistsMap.size,
+                prevUniqueCount: prevArtistsMap.size,
+                delta: artistsDelta,
+                top1: sortedArtists[0] || null,
+                top5: sortedArtists.slice(1, 5)
+            },
+            topAlbums: {
+                uniqueCount: curAlbumsMap.size,
+                prevUniqueCount: prevAlbumsMap.size,
+                delta: albumsDelta,
+                top1: sortedAlbums[0] || null,
+                top5: sortedAlbums.slice(1, 5)
+            },
+            topTracks: {
+                uniqueCount: curTracksMap.size,
+                prevUniqueCount: prevTracksMap.size,
+                delta: tracksDelta,
+                top1: sortedTracks[0] || null,
+                top5: sortedTracks.slice(1, 5)
+            },
+            newDiscoveries: {
+                artists: {
+                    count: newArtistsMap.size,
+                    pct: newArtistsPct,
+                    delta: formatDelta(newArtistsMap.size, prevNewArtists.size),
+                    prevCount: prevNewArtists.size
+                },
+                albums: {
+                    count: newAlbumsMap.size,
+                    pct: newAlbumsPct,
+                    delta: formatDelta(newAlbumsMap.size, prevNewAlbums.size),
+                    prevCount: prevNewAlbums.size
+                },
+                tracks: {
+                    count: newTracksMap.size,
+                    pct: newTracksPct,
+                    delta: formatDelta(newTracksMap.size, prevNewTracks.size),
+                    prevCount: prevNewTracks.size
+                },
+                topNewArtist: sortedNewArtists[0] || null,
+                topNewAlbum: sortedNewAlbums[0] || null,
+                topNewTrack: sortedNewTracks[0] || null,
+                allNewDiscoveries: {
+                    artists: sortedNewArtists.slice(0, 3),
+                    albums: sortedNewAlbums.slice(0, 3),
+                    tracks: sortedNewTracks.slice(0, 3)
+                }
+            },
+            musicRatio: {
+                tracksPerArtist: {
+                    cur: curTracksPerArtist,
+                    prev: prevTracksPerArtist,
+                    delta: formatDelta(curTracksPerArtist, prevTracksPerArtist)
+                },
+                scrobblesPerTrack: {
+                    cur: curScrobblesPerTrack,
+                    prev: prevScrobblesPerTrack,
+                    delta: formatDelta(curScrobblesPerTrack, prevScrobblesPerTrack)
+                },
+                scrobblesPerAlbum: {
+                    cur: curScrobblesPerAlbum,
+                    prev: prevScrobblesPerAlbum,
+                    delta: formatDelta(curScrobblesPerAlbum, prevScrobblesPerAlbum)
+                }
+            },
+            fingerprint: {
+                you: {
+                    consistency: consistencyVal,
+                    discoveryRate: discoveryRateVal,
+                    variance: varianceVal,
+                    concentration: concentrationVal,
+                    replayRate: replayRateVal
+                },
+                average: ARCHIVE_RADAR_AVERAGE
+            },
+            genresStreamgraph: {
+                streamDays: streamDays,
+                genresSummary: genresSummary,
+                colors: GENRE_TAG_COLORS
+            },
+            decades: decades,
+            listeningClock: {
+                hourly: hourly,
+                busiestHour: peakHour,
+                busiestHourStr: busiestHourStr,
+                busiestCount: peakHourCount
+            },
+            quickFacts: {
+                listeningTime: {
+                    value: formatDuration(curMinutes),
+                    prevValue: formatDuration(prevMinutes),
+                    delta: formatDelta(curMinutes, prevMinutes)
+                },
+                averageScrobbles: {
+                    value: `${avgCurDay} /DAY`,
+                    prevValue: `${avgPrevDay}`,
+                    delta: formatDelta(avgCurDay, avgPrevDay)
+                },
+                mostActiveDay: {
+                    value: mostActiveDayObj ? `${mostActiveDayObj.count} (${mostActiveDayObj.dateStr})` : '—',
+                    prevValue: `${prevPeakDayCount}`,
+                    delta: formatDelta(maxDayScrobbles, prevPeakDayCount, true)
+                }
+            }
+        };
+    }
+
     return {
         calculateStats: calculateStats,
         filterByPeriod: filterByPeriod,
@@ -412,6 +1124,13 @@
         pollLiveTrack: pollLiveTrack,
         fetchUserInfo: fetchUserInfo,
         formatScrobbleDate: formatScrobbleDate,
-        formatRelativeDate: formatRelativeDate
+        formatRelativeDate: formatRelativeDate,
+        // Last.week additions:
+        GENRE_TAG_COLORS: GENRE_TAG_COLORS,
+        classifyGenre: classifyGenre,
+        classifyDecade: classifyDecade,
+        ARCHIVE_RADAR_AVERAGE: ARCHIVE_RADAR_AVERAGE,
+        buildWeeklyIntervals: buildWeeklyIntervals,
+        computeWeeklyReport: computeWeeklyReport
     };
 }));
