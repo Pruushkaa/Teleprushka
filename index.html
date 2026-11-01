@@ -1850,15 +1850,13 @@
                                     </div>
                                 ) : (
                                     filteredArticles.map((art) => {
-                                        const isSelected = currentArticle?.id === art.id && !isCreating;
+                                        const isSelected = currentArticle?.id === art.id;
                                         return (
                                             <div
                                                 key={art.id}
                                                 onClick={() => {
                                                     sfx.playClick();
                                                     setSelectedId(art.id);
-                                                    setIsEditing(false);
-                                                    setIsCreating(false);
                                                 }}
                                                 className={`p-2.5 border-2 border-black cursor-pointer transition-all ${
                                                     isSelected
