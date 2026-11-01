@@ -1692,7 +1692,9 @@
 
             const commands = [
                 { id: 'home', label: 'Перейти на Главную страницу', icon: 'fa-house', run: () => window.location.href = 'index.html' },
-                { id: 'report', label: '📊 Отчёт за неделю (Last.week // Инспектор)', icon: 'fa-chart-column', run: () => onAction('lastweek') },
+                { id: 'report-week', label: '📊 Отчёт за неделю (Last.week // Инспектор)', icon: 'fa-calendar-week', run: () => onAction('report-week') },
+                { id: 'report-month', label: '🗓 Отчёт за месяц (Last.month // Инспектор)', icon: 'fa-calendar', run: () => onAction('report-month') },
+                { id: 'report-year', label: '🏆 Отчёт за год (Last.year // Инспектор)', icon: 'fa-trophy', run: () => onAction('report-year') },
                 { id: 'tracks', label: 'Открыть Маршруты // GPX', icon: 'fa-map-location-dot', run: () => window.location.href = 'index.html#tracks' },
                 { id: 'photos', label: 'Открыть Фотоархив', icon: 'fa-camera-retro', run: () => window.location.href = 'index.html#photos' },
                 { id: 'archive', label: 'Перейти к Архиву треков', icon: 'fa-list', run: () => document.getElementById('archive-section')?.scrollIntoView({ behavior: 'smooth' }) },
@@ -1810,32 +1812,53 @@
 
         const LastWeekReportModal = ({
             scrobbles = [],
+            initialReportType = 'WEEK',
             onClose,
             onPlayTrack,
             activePlayingTrack,
             isPlaying
         }) => {
+            const [reportType, setReportType] = useState(initialReportType || 'WEEK');
+
+            useEffect(() => {
+                if (initialReportType && initialReportType !== reportType) {
+                    setReportType(initialReportType);
+                }
+            }, [initialReportType]);
+
             const intervals = useMemo(() => {
-                if (typeof window.MusicAnalytics !== 'undefined' && window.MusicAnalytics.buildWeeklyIntervals) {
+                if (typeof window.MusicAnalytics === 'undefined') return [];
+                if (reportType === 'MONTH' && window.MusicAnalytics.buildMonthlyIntervals) {
+                    return window.MusicAnalytics.buildMonthlyIntervals(scrobbles);
+                }
+                if (reportType === 'YEAR' && window.MusicAnalytics.buildYearlyIntervals) {
+                    return window.MusicAnalytics.buildYearlyIntervals(scrobbles);
+                }
+                if (window.MusicAnalytics.buildWeeklyIntervals) {
                     return window.MusicAnalytics.buildWeeklyIntervals(scrobbles);
                 }
                 return [];
-            }, [scrobbles]);
+            }, [scrobbles, reportType]);
 
-            // Default to official completed Last.week (index 1 if rolling week 0 exists, else 0)
-            const [selectedWeekIndex, setSelectedWeekIndex] = useState(() => {
-                if (intervals.length > 1 && intervals[0].isRolling) return 1;
-                return 0;
-            });
+            // Default index for current interval
+            const [selectedIndex, setSelectedIndex] = useState(0);
 
-            const currentInterval = intervals[selectedWeekIndex] || intervals[0] || null;
+            useEffect(() => {
+                if (reportType === 'WEEK' && intervals.length > 1 && intervals[0].isRolling) {
+                    setSelectedIndex(1);
+                } else {
+                    setSelectedIndex(0);
+                }
+            }, [reportType, intervals.length]);
+
+            const currentInterval = intervals[selectedIndex] || intervals[0] || null;
 
             const report = useMemo(() => {
-                if (!currentInterval || typeof window.MusicAnalytics === 'undefined' || !window.MusicAnalytics.computeWeeklyReport) {
+                if (!currentInterval || typeof window.MusicAnalytics === 'undefined' || !window.MusicAnalytics.computeReport) {
                     return null;
                 }
-                return window.MusicAnalytics.computeWeeklyReport(scrobbles, currentInterval);
-            }, [scrobbles, currentInterval]);
+                return window.MusicAnalytics.computeReport(scrobbles, currentInterval, reportType);
+            }, [scrobbles, currentInterval, reportType]);
 
             // Interactive state for tooltips & active items
             const [hoveredDay, setHoveredDay] = useState(null);
@@ -1843,7 +1866,7 @@
             const [hoveredRadarMetric, setHoveredRadarMetric] = useState(null);
             const [hoveredStreamDay, setHoveredStreamDay] = useState(null);
 
-            // Keyboard navigation: Escape to close, Left/Right arrow to navigate weeks
+            // Keyboard navigation: Escape to close, Left/Right arrow to navigate periods
             useEffect(() => {
                 const handleKeyDown = (e) => {
                     if (e.key === 'Escape') {
@@ -1851,10 +1874,10 @@
                         onClose();
                     } else if (e.key === 'ArrowLeft') {
                         e.preventDefault();
-                        setSelectedWeekIndex((prev) => Math.min(intervals.length - 1, prev + 1));
+                        setSelectedIndex((prev) => Math.min(intervals.length - 1, prev + 1));
                     } else if (e.key === 'ArrowRight') {
                         e.preventDefault();
-                        setSelectedWeekIndex((prev) => Math.max(0, prev - 1));
+                        setSelectedIndex((prev) => Math.max(0, prev - 1));
                     }
                 };
                 window.addEventListener('keydown', handleKeyDown);
@@ -1867,12 +1890,19 @@
                 };
             }, [intervals.length, onClose]);
 
+            const typeConfig = {
+                WEEK: { label: 'LAST.WEEK', title: 'НЕДЕЛЯ', color: '#A855F7', icon: 'fa-calendar-week', textColor: 'text-white' },
+                MONTH: { label: 'LAST.MONTH', title: 'МЕСЯЦ', color: '#14B8A6', icon: 'fa-calendar', textColor: 'text-black' },
+                YEAR: { label: 'LAST.YEAR', title: 'ГОД', color: '#FB7185', icon: 'fa-trophy', textColor: 'text-black' }
+            };
+            const activeCfg = typeConfig[reportType] || typeConfig.WEEK;
+
             if (!report) {
                 return (
                     <div className="fixed inset-0 z-50 bg-[#0e0e10]/95 backdrop-blur-md flex items-center justify-center p-4 text-white font-mono">
                         <div className="brutal-card p-6 bg-[#16161a] border-2 border-black max-w-md w-full text-center">
                             <i className="fa-solid fa-spinner fa-spin text-2xl text-[#FF5722] mb-3"></i>
-                            <div className="font-bold text-sm">ГЕНЕРАЦИЯ ОТЧЁТА LAST.WEEK...</div>
+                            <div className="font-bold text-sm">ГЕНЕРАЦИЯ ОТЧЁТА {activeCfg.label}...</div>
                             <button
                                 onClick={onClose}
                                 className="brutal-btn mt-4 bg-neutral-800 text-white px-4 py-1.5 text-xs font-bold"
@@ -1903,15 +1933,18 @@
 
             return (
                 <div className="fixed inset-0 z-50 overflow-y-auto bg-[#0e0e10] text-[#f4f4f5] selection:bg-[#FB7185] selection:text-black">
-                    {/* FIXED HEADER WITH CONTROLS & PERIOD NAVIGATOR */}
-                    <header className="sticky top-0 z-40 bg-[#121215]/95 backdrop-blur-md border-b-2 border-black px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+                    {/* FIXED HEADER WITH CONTROLS, TABS & PERIOD NAVIGATOR */}
+                    <header className="sticky top-0 z-40 bg-[#121215]/95 backdrop-blur-md border-b-2 border-black px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-lg">
                         <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 bg-[#A855F7] border-2 border-black flex items-center justify-center text-white text-base font-mono font-black shadow-[2px_2px_0px_#000]">
-                                <i className="fa-solid fa-chart-column"></i>
+                            <div
+                                style={{ backgroundColor: activeCfg.color }}
+                                className="w-9 h-9 border-2 border-black flex items-center justify-center text-base font-mono font-black shadow-[2px_2px_0px_#000] transition-colors"
+                            >
+                                <i className={`fa-solid ${activeCfg.icon} ${activeCfg.textColor}`}></i>
                             </div>
                             <div>
                                 <div className="font-extrabold text-sm sm:text-base tracking-tight font-mono flex items-center gap-2">
-                                    <span>LAST.WEEK // PRUUSHKAA</span>
+                                    <span>{activeCfg.label} // PRUUSHKAA</span>
                                     <span className="text-[10px] bg-[#CCFF00] text-black px-1.5 py-0.2 border border-black font-black">
                                         REPORT
                                     </span>
@@ -1922,44 +1955,76 @@
                             </div>
                         </div>
 
-                        {/* Period Selector: [<] [Dropdown / Week] [>] [Latest] */}
+                        {/* Report Period Type Tabs: WEEK | MONTH | YEAR */}
+                        <div className="flex items-center bg-[#18181c] p-1 border border-neutral-800">
+                            {(['WEEK', 'MONTH', 'YEAR']).map((t) => {
+                                const cfg = typeConfig[t];
+                                const isActive = reportType === t;
+                                return (
+                                    <button
+                                        key={t}
+                                        onClick={() => setReportType(t)}
+                                        style={isActive ? { backgroundColor: cfg.color } : {}}
+                                        className={`px-2.5 py-1 font-mono text-[11px] font-bold flex items-center gap-1.5 transition-colors ${
+                                            isActive ? `${cfg.textColor} font-black shadow-sm` : 'text-neutral-400 hover:text-white'
+                                        }`}
+                                        title={`Переключить на отчёт ${cfg.label}`}
+                                    >
+                                        <i className={`fa-solid ${cfg.icon} text-[10px]`}></i>
+                                        <span>{cfg.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Period Selector: [<] [Dropdown] [>] [Latest] [Close] */}
                         <div className="flex items-center gap-1.5 font-mono text-xs">
                             <button
-                                onClick={() => setSelectedWeekIndex((prev) => Math.min(intervals.length - 1, prev + 1))}
-                                disabled={selectedWeekIndex >= intervals.length - 1}
+                                onClick={() => setSelectedIndex((prev) => Math.min(intervals.length - 1, prev + 1))}
+                                disabled={selectedIndex >= intervals.length - 1}
                                 className="brutal-btn px-2.5 py-1.5 bg-[#1f1f24] hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold flex items-center gap-1"
-                                title="Предыдущая неделя (Стрелка влево ←)"
+                                title="Предыдущий период (Стрелка влево ←)"
                             >
                                 <i className="fa-solid fa-chevron-left text-[11px]"></i>
                             </button>
 
                             {/* Dropdown period selector */}
                             <select
-                                value={selectedWeekIndex}
-                                onChange={(e) => setSelectedWeekIndex(Number(e.target.value))}
-                                className="bg-[#18181c] text-white border border-neutral-700/80 px-2 sm:px-3 py-1.5 font-mono text-xs font-bold rounded-none focus:outline-none focus:ring-1 focus:ring-[#A855F7] cursor-pointer"
+                                value={selectedIndex}
+                                onChange={(e) => setSelectedIndex(Number(e.target.value))}
+                                className="bg-[#18181c] text-white border border-neutral-700/80 px-2 sm:px-3 py-1.5 font-mono text-xs font-bold rounded-none focus:outline-none focus:ring-1 focus:ring-[#A855F7] cursor-pointer max-w-[200px] sm:max-w-[270px] truncate"
                             >
-                                {intervals.map((w, idx) => (
-                                    <option key={w.id || idx} value={idx} className="bg-[#121214] text-white">
-                                        {w.isRolling ? `★ СКОЛЬЗЯЩАЯ (${w.shortLabel})` : `НЕДЕЛЯ ${w.weekNum || (intervals.length - idx)}: ${w.label}`}
-                                    </option>
-                                ))}
+                                {intervals.map((w, idx) => {
+                                    let optLabel = w.label;
+                                    if (reportType === 'WEEK') {
+                                        optLabel = w.isRolling ? `★ СКОЛЬЗЯЩАЯ (${w.shortLabel})` : `НЕДЕЛЯ ${w.weekNum || (intervals.length - idx)}: ${w.label}`;
+                                    } else if (reportType === 'MONTH') {
+                                        optLabel = `МЕСЯЦ: ${w.label}`;
+                                    } else if (reportType === 'YEAR') {
+                                        optLabel = `${w.label}`;
+                                    }
+                                    return (
+                                        <option key={w.id || idx} value={idx} className="bg-[#121214] text-white">
+                                            {optLabel}
+                                        </option>
+                                    );
+                                })}
                             </select>
 
                             <button
-                                onClick={() => setSelectedWeekIndex((prev) => Math.max(0, prev - 1))}
-                                disabled={selectedWeekIndex <= 0}
+                                onClick={() => setSelectedIndex((prev) => Math.max(0, prev - 1))}
+                                disabled={selectedIndex <= 0}
                                 className="brutal-btn px-2.5 py-1.5 bg-[#1f1f24] hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold flex items-center gap-1"
-                                title="Следующая неделя (Стрелка вправо →)"
+                                title="Следующий период (Стрелка вправо →)"
                             >
                                 <i className="fa-solid fa-chevron-right text-[11px]"></i>
                             </button>
 
-                            {selectedWeekIndex !== 0 && (
+                            {selectedIndex !== 0 && (
                                 <button
-                                    onClick={() => setSelectedWeekIndex(0)}
+                                    onClick={() => setSelectedIndex(0)}
                                     className="brutal-btn px-2.5 py-1.5 bg-[#A855F7] text-white hover:bg-[#9333ea] font-extrabold text-[11px] hidden sm:flex items-center gap-1"
-                                    title="К последней неделе"
+                                    title="К последнему периоду"
                                 >
                                     <i className="fa-solid fa-forward-step text-[10px]"></i>
                                     <span>LATEST</span>
@@ -1983,7 +2048,7 @@
                     <main className="max-w-7xl mx-auto px-3 sm:px-6 py-6 space-y-6 pb-20">
 
                         {/* ==================================================== */}
-                        {/* СЕКЦИЯ 1: HERO БАННЕР С ДНЯМИ НЕДЕЛИ                 */}
+                        {/* СЕКЦИЯ 1: HERO БАННЕР С ДНЯМИ НЕДЕЛИ / МЕСЯЦА / ГОДА */}
                         {/* ==================================================== */}
                         <section className="brutal-card p-4 sm:p-6 bg-[#151518] border-2 border-black text-white relative overflow-hidden shadow-[4px_4px_0px_#000]">
                             <div className="absolute top-0 right-0 w-80 h-80 bg-[#FB7185]/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -1993,7 +2058,7 @@
                                 <div>
                                     <div className="flex items-center gap-2 font-mono text-xs text-neutral-400 mb-1">
                                         <span className="w-2.5 h-2.5 bg-[#FB7185] inline-block"></span>
-                                        <span className="uppercase tracking-wider">LAST.WEEK OVERVIEW // PRUUSHKAA</span>
+                                        <span className="uppercase tracking-wider">{activeCfg.label} OVERVIEW // PRUUSHKAA</span>
                                     </div>
                                     <div className="flex flex-wrap items-baseline gap-3">
                                         <div className="text-4xl sm:text-6xl font-black font-mono tracking-tight text-white">
@@ -2009,41 +2074,52 @@
                                                     : 'bg-[#F43F5E]/15 text-[#F43F5E] border-[#F43F5E]/40'
                                             }`}
                                         >
-                                            <span>{hero.delta} vs. last week</span>
+                                            <span>{hero.delta} vs. last {reportType.toLowerCase()}</span>
                                         </div>
                                     </div>
                                     <p className="font-mono text-xs text-neutral-400 mt-2">
-                                        Прослушано за 7 дней ({period.fullLabel}) • В среднем {quickFacts.averageScrobbles.value} • Всего времени: {quickFacts.listeningTime.value}
+                                        {reportType === 'WEEK' && `Прослушано за 7 дней (${period.fullLabel}) • В среднем ${quickFacts.averageScrobbles.value} • Всего времени: ${quickFacts.listeningTime.value}`}
+                                        {reportType === 'MONTH' && `Прослушано за календарный месяц (${period.fullLabel}) • В среднем ${quickFacts.averageScrobbles.value} • Всего времени: ${quickFacts.listeningTime.value}`}
+                                        {reportType === 'YEAR' && `Прослушано за календарный год (${period.fullLabel}) • В среднем ${quickFacts.averageScrobbles.value} • Всего времени: ${quickFacts.listeningTime.value}`}
                                     </p>
                                 </div>
 
-                                {/* Right: Dual Bar Chart by Days of Week */}
+                                {/* Right: Dual Bar Chart by Days of Week / Month / Year */}
                                 <div className="w-full lg:w-auto lg:min-w-[440px]">
                                     <div className="flex items-center justify-between text-xs font-mono mb-2 text-neutral-400">
-                                        <span className="font-bold text-neutral-300">ПРОСЛУШИВАНИЯ ПО ДНЯМ</span>
+                                        <span className="font-bold text-neutral-300">
+                                            {reportType === 'WEEK' ? 'ПРОСЛУШИВАНИЯ ПО ДНЯМ' : reportType === 'MONTH' ? 'ПРОСЛУШИВАНИЯ ПО ДНЯМ МЕСЯЦА' : 'ПРОСЛУШИВАНИЯ ПО МЕСЯЦАМ'}
+                                        </span>
                                         <div className="flex items-center gap-3">
                                             <span className="flex items-center gap-1.5 text-neutral-300">
-                                                <span className="w-3 h-3 bg-[#FB7185] inline-block"></span> This week
+                                                <span className="w-3 h-3 bg-[#FB7185] inline-block"></span> This {reportType.toLowerCase()}
                                             </span>
                                             <span className="flex items-center gap-1.5 text-neutral-400">
-                                                <span className="w-3 h-3 bg-white/20 inline-block border border-white/30"></span> Last week
+                                                <span className="w-3 h-3 bg-white/20 inline-block border border-white/30"></span> Last {reportType.toLowerCase()}
                                             </span>
                                         </div>
                                     </div>
 
-                                    {/* 7 Days Paired Bars */}
-                                    <div className="grid grid-cols-7 gap-2 sm:gap-3 items-end h-36 pt-4 pb-1 border-b border-neutral-700/80">
-                                        {hero.days.map((day) => {
-                                            const thisHeight = Math.max(4, Math.round((day.thisWeek / maxDayScrobbles) * 110));
-                                            const lastHeight = Math.max(4, Math.round((day.lastWeek / maxDayScrobbles) * 110));
+                                    {/* Responsive Paired Bars */}
+                                    <div className={`items-end h-36 pt-4 pb-1 border-b border-neutral-700/80 ${
+                                        reportType === 'WEEK'
+                                            ? 'grid grid-cols-7 gap-2 sm:gap-3'
+                                            : reportType === 'YEAR'
+                                                ? 'grid grid-cols-12 gap-1 sm:gap-2'
+                                                : 'flex items-end justify-between gap-0.5 sm:gap-1'
+                                    }`}>
+                                        {hero.days.map((day, idx) => {
+                                            const thisHeight = Math.max(3, Math.round((day.thisWeek / maxDayScrobbles) * 110));
+                                            const lastHeight = Math.max(3, Math.round((day.lastWeek / maxDayScrobbles) * 110));
                                             const isHovered = hoveredDay === day.dayIndex;
+                                            const isTick = reportType !== 'MONTH' || (idx === 0 || (idx + 1) % 5 === 0 || idx === hero.days.length - 1);
 
                                             return (
                                                 <div
                                                     key={day.dayIndex}
                                                     onMouseEnter={() => setHoveredDay(day.dayIndex)}
                                                     onMouseLeave={() => setHoveredDay(null)}
-                                                    className="flex flex-col items-center justify-end h-full relative cursor-pointer group"
+                                                    className="flex flex-col items-center justify-end h-full relative cursor-pointer group flex-1 min-w-0"
                                                 >
                                                     {/* Tooltip on Hover */}
                                                     {isHovered && (
@@ -2054,27 +2130,31 @@
                                                     )}
 
                                                     {/* Pair of vertical bars */}
-                                                    <div className="flex items-end gap-1 w-full justify-center">
-                                                        {/* This Week Bar */}
+                                                    <div className="flex items-end gap-0.5 sm:gap-1 w-full justify-center">
+                                                        {/* This Period Bar */}
                                                         <div
                                                             style={{ height: `${thisHeight}px` }}
-                                                            className={`w-3 sm:w-4 bg-[#FB7185] transition-all duration-150 ${
+                                                            className={`${
+                                                                reportType === 'MONTH' ? 'w-1 sm:w-1.5' : reportType === 'YEAR' ? 'w-1.5 sm:w-3' : 'w-3 sm:w-4'
+                                                            } bg-[#FB7185] transition-all duration-150 ${
                                                                 isHovered ? 'brightness-125 shadow-[0_0_8px_#FB7185]' : ''
                                                             }`}
-                                                            title={`This week: ${day.thisWeek}`}
+                                                            title={`This ${reportType.toLowerCase()}: ${day.thisWeek}`}
                                                         ></div>
-                                                        {/* Last Week Bar */}
+                                                        {/* Last Period Bar */}
                                                         <div
                                                             style={{ height: `${lastHeight}px` }}
-                                                            className={`w-3 sm:w-4 bg-white/20 border border-white/20 transition-all duration-150 ${
+                                                            className={`${
+                                                                reportType === 'MONTH' ? 'w-1 sm:w-1.5' : reportType === 'YEAR' ? 'w-1.5 sm:w-3' : 'w-3 sm:w-4'
+                                                            } bg-white/20 border border-white/20 transition-all duration-150 ${
                                                                 isHovered ? 'bg-white/35' : ''
                                                             }`}
-                                                            title={`Last week: ${day.lastWeek}`}
+                                                            title={`Last ${reportType.toLowerCase()}: ${day.lastWeek}`}
                                                         ></div>
                                                     </div>
 
-                                                    {/* Day Label */}
-                                                    <div className="font-mono text-[10px] sm:text-xs text-neutral-400 mt-2 font-bold group-hover:text-white">
+                                                    {/* Day / Month Label */}
+                                                    <div className={`font-mono text-[9px] sm:text-[11px] text-neutral-400 mt-2 font-bold group-hover:text-white truncate ${!isTick ? 'opacity-0' : ''}`}>
                                                         {day.dayName}
                                                     </div>
                                                 </div>
@@ -2119,7 +2199,7 @@
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="font-mono text-[10px] text-[#A855F7] uppercase font-bold tracking-wider">
-                                                        ТОП-АРТИСТ НЕДЕЛИ
+                                                        ТОП-АРТИСТ {reportType === 'YEAR' ? 'ГОДА' : reportType === 'MONTH' ? 'МЕСЯЦА' : 'НЕДЕЛИ'}
                                                     </div>
                                                     <h4 className="font-extrabold text-base sm:text-lg text-white truncate" title={topArtists.top1.name}>
                                                         {topArtists.top1.name}
@@ -2127,7 +2207,7 @@
                                                     <div className="font-mono text-xs text-neutral-400 mt-1 flex items-center gap-2">
                                                         <span className="font-bold text-white">{topArtists.top1.count} скробблов</span>
                                                         <span>•</span>
-                                                        <span>{topArtists.top1.pct}% недели</span>
+                                                        <span>{topArtists.top1.pct}% {reportType === 'YEAR' ? 'года' : reportType === 'MONTH' ? 'месяца' : 'недели'}</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -2193,7 +2273,7 @@
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="font-mono text-[10px] text-[#14B8A6] uppercase font-bold tracking-wider">
-                                                        ТОП-АЛЬБОМ НЕДЕЛИ
+                                                        ТОП-АЛЬБОМ {reportType === 'YEAR' ? 'ГОДА' : reportType === 'MONTH' ? 'МЕСЯЦА' : 'НЕДЕЛИ'}
                                                     </div>
                                                     <h4 className="font-extrabold text-base sm:text-lg text-white truncate" title={topAlbums.top1.album}>
                                                         {topAlbums.top1.album}
@@ -2270,7 +2350,7 @@
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="font-mono text-[10px] text-[#3B82F6] uppercase font-bold tracking-wider">
-                                                        ТОП-ТРЕК НЕДЕЛИ
+                                                        ТОП-ТРЕК {reportType === 'YEAR' ? 'ГОДА' : reportType === 'MONTH' ? 'МЕСЯЦА' : 'НЕДЕЛИ'}
                                                     </div>
                                                     <h4 className="font-extrabold text-base sm:text-lg text-white truncate" title={topTracks.top1.track}>
                                                         {topTracks.top1.track}
@@ -2460,7 +2540,7 @@
                                                 MUSIC RATIO // КОЛЬЦЕВАЯ ДИАГРАММА
                                             </h3>
                                         </div>
-                                        <span className="font-mono text-xs text-neutral-400">VS. LAST WEEK</span>
+                                        <span className="font-mono text-xs text-neutral-400">VS. LAST {reportType}</span>
                                     </div>
 
                                     <div className="flex flex-col sm:flex-row items-center justify-around gap-6">
@@ -2715,7 +2795,9 @@
                                         TOP TAGS DYNAMICS // STREAMGRAPH (ПОТОКОВЫЙ ГРАФИК ЖАНРОВ)
                                     </h3>
                                 </div>
-                                <span className="font-mono text-xs text-neutral-400">ПО ДНЯМ НЕДЕЛИ</span>
+                                <span className="font-mono text-xs text-neutral-400">
+                                    {reportType === 'YEAR' ? 'ПО МЕСЯЦАМ ГОДА' : reportType === 'MONTH' ? 'ПО НЕДЕЛЯМ МЕСЯЦА' : 'ПО ДНЯМ НЕДЕЛИ'}
+                                </span>
                             </div>
 
                             {/* Genre Badges Legend */}
@@ -3046,7 +3128,7 @@
                                     {quickFacts.listeningTime.value}
                                 </div>
                                 <div className="font-mono text-xs text-neutral-500 mt-2">
-                                    vs. {quickFacts.listeningTime.prevValue.toLowerCase()} last week
+                                    vs. {quickFacts.listeningTime.prevValue.toLowerCase()} last {reportType.toLowerCase()}
                                 </div>
                             </div>
 
@@ -3067,7 +3149,7 @@
                                     {quickFacts.averageScrobbles.value}
                                 </div>
                                 <div className="font-mono text-xs text-neutral-500 mt-2">
-                                    vs. {quickFacts.averageScrobbles.prevValue} last week
+                                    vs. {quickFacts.averageScrobbles.prevValue} last {reportType.toLowerCase()}
                                 </div>
                             </div>
 
@@ -3088,7 +3170,7 @@
                                     {quickFacts.mostActiveDay.value}
                                 </div>
                                 <div className="font-mono text-xs text-neutral-500 mt-2">
-                                    vs. {quickFacts.mostActiveDay.prevValue} peak day last week
+                                    vs. {quickFacts.mostActiveDay.prevValue} peak day last {reportType.toLowerCase()}
                                 </div>
                             </div>
                         </section>
@@ -3113,23 +3195,38 @@
             const [cmdOpen, setCmdOpen] = useState(false);
             const [settingsOpen, setSettingsOpen] = useState(false);
 
-            // Last.week Report Modal State & Hash Sync
+            // Last.week / Last.month / Last.year Report Modal State & Hash Sync
+            const [reportType, setReportType] = useState(() => {
+                try {
+                    const hash = (window.location.hash || '').toLowerCase();
+                    const params = new URLSearchParams(window.location.search);
+                    const q = (params.get('report') || '').toUpperCase();
+                    if (['WEEK', 'MONTH', 'YEAR'].includes(q)) return q;
+                    if (hash === '#report=month' || hash === '#month') return 'MONTH';
+                    if (hash === '#report=year' || hash === '#year') return 'YEAR';
+                    return 'WEEK';
+                } catch (e) {
+                    return 'WEEK';
+                }
+            });
+
             const [reportOpen, setReportOpen] = useState(() => {
                 try {
-                    const hash = window.location.hash;
+                    const hash = (window.location.hash || '').toLowerCase();
                     const params = new URLSearchParams(window.location.search);
-                    return hash === '#report' || params.get('report') === 'true' || params.get('report') === 'week';
+                    return hash.startsWith('#report') || hash === '#month' || hash === '#year' || params.has('report');
                 } catch (e) {
                     return false;
                 }
             });
 
-            const openReport = useCallback(() => {
+            const openReport = useCallback((type = 'WEEK') => {
                 sfx.playClick();
                 triggerGlitchSpike(1.2);
+                setReportType(type);
                 setReportOpen(true);
                 try {
-                    window.history.pushState(null, '', '#report');
+                    window.history.pushState(null, '', `#report=${type.toLowerCase()}`);
                 } catch (e) {}
             }, []);
 
@@ -3137,7 +3234,7 @@
                 sfx.playClick();
                 setReportOpen(false);
                 try {
-                    if (window.location.hash === '#report') {
+                    if (window.location.hash.toLowerCase().startsWith('#report')) {
                         window.history.pushState(null, '', window.location.pathname + window.location.search);
                     }
                 } catch (e) {}
@@ -3145,7 +3242,19 @@
 
             useEffect(() => {
                 const handleHashChange = () => {
-                    setReportOpen(window.location.hash === '#report');
+                    const hash = (window.location.hash || '').toLowerCase();
+                    if (hash === '#report=month' || hash === '#month') {
+                        setReportType('MONTH');
+                        setReportOpen(true);
+                    } else if (hash === '#report=year' || hash === '#year') {
+                        setReportType('YEAR');
+                        setReportOpen(true);
+                    } else if (hash === '#report=week' || hash === '#report') {
+                        setReportType('WEEK');
+                        setReportOpen(true);
+                    } else if (!hash.startsWith('#report')) {
+                        setReportOpen(false);
+                    }
                 };
                 window.addEventListener('hashchange', handleHashChange);
                 return () => window.removeEventListener('hashchange', handleHashChange);
@@ -3666,12 +3775,12 @@
                                 </a>
 
                                 <button
-                                    onClick={openReport}
+                                    onClick={() => openReport('WEEK')}
                                     className="brutal-btn px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5 bg-[#A855F7] text-white hover:bg-[#9333ea] shadow-[2px_2px_0px_#000]"
-                                    title="Открыть полноэкранный отчёт Last.week"
+                                    title="Открыть аналитический отчёт (Неделя / Месяц / Год)"
                                 >
                                     <i className="fa-solid fa-chart-column"></i>
-                                    <span>LAST.WEEK // ОТЧЁТ</span>
+                                    <span>LAST.FM // ОТЧЁТЫ</span>
                                 </button>
 
                                 <a
@@ -3725,37 +3834,69 @@
                             </button>
                         </nav>
 
-                        {/* LAST.WEEK REPORT INSPECTOR TRIGGER BANNER */}
-                        <div className="brutal-card p-3.5 sm:p-4 mb-6 bg-[#121215] border-2 border-black text-white flex flex-wrap items-center justify-between gap-3 shadow-[4px_4px_0px_#000] relative overflow-hidden">
-                            <div className="absolute right-0 top-0 bottom-0 w-48 bg-gradient-to-l from-[#A855F7]/15 to-transparent pointer-events-none"></div>
+                        {/* LAST.FM REPORT INSPECTOR TRIGGER BANNER (WEEK / MONTH / YEAR) */}
+                        <div className="brutal-card p-3.5 sm:p-4 mb-6 bg-[#121215] border-2 border-black text-white flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-[4px_4px_0px_#000] relative overflow-hidden">
+                            <div className="absolute right-0 top-0 bottom-0 w-64 bg-gradient-to-l from-[#A855F7]/15 via-[#14B8A6]/10 to-transparent pointer-events-none"></div>
                             <div className="flex items-center gap-3.5 z-10">
-                                <div className="w-11 h-11 bg-[#A855F7] border-2 border-black flex items-center justify-center text-white text-xl font-mono font-black shadow-[2px_2px_0px_#000] shrink-0">
+                                <div className="w-12 h-12 bg-[#A855F7] border-2 border-black flex items-center justify-center text-white text-xl font-mono font-black shadow-[2px_2px_0px_#000] shrink-0">
                                     <i className="fa-solid fa-chart-column"></i>
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <span className="font-extrabold text-sm sm:text-base tracking-tight font-mono text-[#CCFF00]">
-                                            📊 ОТЧЁТ ЗА НЕДЕЛЮ (LAST.WEEK) // ИНСПЕКТОР
+                                            📊 ИНСПЕКТОР ОТЧЁТОВ // LAST.FM ANALYTICS
                                         </span>
                                         <span className="text-[10px] font-mono bg-[#A855F7] text-white px-1.5 py-0.5 border border-black font-extrabold uppercase">
-                                            RADAR & CLOCK
+                                            WEEK
                                         </span>
-                                        <span className="hidden sm:inline-block text-[10px] font-mono bg-white/10 text-neutral-300 px-1.5 py-0.5 border border-white/20">
-                                            51 НЕДЕЛЯ В АРХИВЕ
+                                        <span className="text-[10px] font-mono bg-[#14B8A6] text-black px-1.5 py-0.5 border border-black font-extrabold uppercase">
+                                            MONTH
+                                        </span>
+                                        <span className="text-[10px] font-mono bg-[#FB7185] text-black px-1.5 py-0.5 border border-black font-extrabold uppercase">
+                                            YEAR
                                         </span>
                                     </div>
-                                    <p className="text-xs text-neutral-400 font-mono mt-0.5">
-                                        Интерактивная реплика дашборда Last.fm: сдвоенные гистограммы по дням, радар Fingerprint, 24h циферблат и динамика тегов
+                                    <p className="text-xs text-neutral-400 font-mono mt-1">
+                                        Полноэкранный аналитический дашборд: недельный Last.week (51 неделя), помесячный Last.month (12 месяцев) и годовой Last.year (2026, 2025)
                                     </p>
                                 </div>
                             </div>
-                            <button
-                                onClick={openReport}
-                                className="brutal-btn bg-[#FF5722] hover:bg-[#e64a19] text-white px-4 py-2.5 font-mono font-extrabold text-xs flex items-center gap-2 shadow-[3px_3px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 group z-10"
-                            >
-                                <span>ОТКРЫТЬ ОТЧЁТ</span>
-                                <i className="fa-solid fa-arrow-right transition-transform group-hover:translate-x-1"></i>
-                            </button>
+
+                            {/* Direct Period Launch Buttons */}
+                            <div className="flex items-center gap-2 flex-wrap z-10">
+                                <button
+                                    onClick={() => openReport('WEEK')}
+                                    className="brutal-btn bg-[#A855F7] hover:bg-[#9333ea] text-white px-3 py-2 font-mono font-extrabold text-xs flex items-center gap-1.5 shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5"
+                                    title="Открыть отчёт за неделю (Last.week)"
+                                >
+                                    <i className="fa-solid fa-calendar-week"></i>
+                                    <span>НЕДЕЛЯ</span>
+                                </button>
+                                <button
+                                    onClick={() => openReport('MONTH')}
+                                    className="brutal-btn bg-[#14B8A6] hover:bg-[#0d9488] text-black px-3 py-2 font-mono font-extrabold text-xs flex items-center gap-1.5 shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5"
+                                    title="Открыть отчёт за месяц (Last.month)"
+                                >
+                                    <i className="fa-solid fa-calendar"></i>
+                                    <span>МЕСЯЦ</span>
+                                </button>
+                                <button
+                                    onClick={() => openReport('YEAR')}
+                                    className="brutal-btn bg-[#FB7185] hover:bg-[#f43f5e] text-black px-3 py-2 font-mono font-extrabold text-xs flex items-center gap-1.5 shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5"
+                                    title="Открыть отчёт за год (Last.year)"
+                                >
+                                    <i className="fa-solid fa-trophy"></i>
+                                    <span>ГОД</span>
+                                </button>
+                                <button
+                                    onClick={() => openReport(reportType || 'WEEK')}
+                                    className="brutal-btn bg-[#FF5722] hover:bg-[#e64a19] text-white px-3.5 py-2 font-mono font-extrabold text-xs flex items-center gap-1.5 shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 group"
+                                    title="Открыть полный отчёт"
+                                >
+                                    <span>ОТЧЁТ</span>
+                                    <i className="fa-solid fa-arrow-right text-[10px] transition-transform group-hover:translate-x-1"></i>
+                                </button>
+                            </div>
                         </div>
 
                         {/* HERO SECTION */}
@@ -3884,16 +4025,21 @@
                                 }
                             } else if (action === 'mirele') {
                                 playTrackSample({ track: 'Метеорит', artist: 'Mirèle', album: 'Косички' });
-                            } else if (action === 'lastweek') {
-                                openReport();
+                            } else if (action === 'report-week' || action === 'lastweek') {
+                                openReport('WEEK');
+                            } else if (action === 'report-month') {
+                                openReport('MONTH');
+                            } else if (action === 'report-year') {
+                                openReport('YEAR');
                             }
                         }}
                     />
 
-                    {/* LAST.WEEK / LAST.MONTH FULL-SCREEN MODAL */}
+                    {/* LAST.WEEK / LAST.MONTH / LAST.YEAR FULL-SCREEN MODAL */}
                     {reportOpen && (
                         <LastWeekReportModal
                             scrobbles={mergedScrobbles.length > 0 ? mergedScrobbles : archiveScrobbles}
+                            initialReportType={reportType}
                             onClose={closeReport}
                             onPlayTrack={playTrackSample}
                             activePlayingTrack={activeTrack}

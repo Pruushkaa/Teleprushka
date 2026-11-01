@@ -596,6 +596,7 @@
                 end: rollingEnd,
                 label: `${dS.getUTCDate()} ${months[dS.getUTCMonth()]} — ${dE.getUTCDate()} ${months[dE.getUTCMonth()]} ${dE.getUTCFullYear()}`,
                 shortLabel: `${dS.getUTCDate()}.${String(dS.getUTCMonth()+1).padStart(2,'0')} — ${dE.getUTCDate()}.${String(dE.getUTCMonth()+1).padStart(2,'0')}`,
+                type: 'WEEK',
                 isRolling: true,
                 isLatest: true
             });
@@ -621,6 +622,7 @@
                 label: label,
                 shortLabel: shortLabel,
                 weekNum: weekNum,
+                type: 'WEEK',
                 isRolling: false,
                 isLatest: weeks.length === 0
             });
@@ -633,28 +635,121 @@
     }
 
     /**
-     * Compute comprehensive Last.week report for specified time window
+     * Builds list of all available Last.month periods (Calendar months)
      */
-    function computeWeeklyReport(scrobbles, targetInterval) {
+    function buildMonthlyIntervals(scrobbles) {
+        if (!scrobbles || scrobbles.length === 0) return [];
+        const sorted = scrobbles.filter(s => s && s.date).sort((a, b) => a.date - b.date);
+        if (sorted.length === 0) return [];
+
+        const firstDate = new Date(sorted[0].date);
+        const lastDate = new Date(sorted[sorted.length - 1].date);
+        const months = [];
+        const monthNames = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+
+        let curY = lastDate.getUTCFullYear();
+        let curM = lastDate.getUTCMonth();
+        const firstY = firstDate.getUTCFullYear();
+        const firstM = firstDate.getUTCMonth();
+
+        while (curY > firstY || (curY === firstY && curM >= firstM)) {
+            const start = Date.UTC(curY, curM, 1, 0, 0, 0, 0);
+            const end = Date.UTC(curY, curM + 1, 1, 0, 0, 0, 0);
+            months.push({
+                id: `month-${curY}-${curM}`,
+                year: curY,
+                month: curM,
+                start: start,
+                end: end,
+                label: `${monthNames[curM]} ${curY}`,
+                shortLabel: `${String(curM + 1).padStart(2, '0')}.${curY}`,
+                type: 'MONTH',
+                isLatest: months.length === 0
+            });
+            curM--;
+            if (curM < 0) { curM = 11; curY--; }
+        }
+        return months;
+    }
+
+    /**
+     * Builds list of all available Last.year periods (Calendar years)
+     */
+    function buildYearlyIntervals(scrobbles) {
+        if (!scrobbles || scrobbles.length === 0) return [];
+        const sorted = scrobbles.filter(s => s && s.date).sort((a, b) => a.date - b.date);
+        if (sorted.length === 0) return [];
+
+        const firstYear = new Date(sorted[0].date).getUTCFullYear();
+        const lastYear = new Date(sorted[sorted.length - 1].date).getUTCFullYear();
+        const years = [];
+
+        for (let y = lastYear; y >= firstYear; y--) {
+            years.push({
+                id: `year-${y}`,
+                year: y,
+                start: Date.UTC(y, 0, 1, 0, 0, 0, 0),
+                end: Date.UTC(y + 1, 0, 1, 0, 0, 0, 0),
+                label: `ГОД ${y}`,
+                shortLabel: `${y}`,
+                type: 'YEAR',
+                isLatest: years.length === 0
+            });
+        }
+        return years;
+    }
+
+    /**
+     * Generalized analytics report computation for WEEK, MONTH, and YEAR
+     */
+    function computeReport(scrobbles, targetInterval, explicitType) {
         if (!scrobbles || scrobbles.length === 0) return null;
 
-        const ONE_WEEK_MS = 7 * 24 * 3600 * 1000;
-        let weekStart, weekEnd;
+        const reportType = explicitType || targetInterval?.type || 'WEEK';
+        let periodStart, periodEnd;
 
         if (targetInterval && targetInterval.start && targetInterval.end) {
-            weekStart = targetInterval.start;
-            weekEnd = targetInterval.end;
+            periodStart = targetInterval.start;
+            periodEnd = targetInterval.end;
         } else {
-            const intervals = buildWeeklyIntervals(scrobbles);
-            const defaultWeek = intervals.find(w => !w.isRolling) || intervals[0];
-            weekStart = defaultWeek.start;
-            weekEnd = defaultWeek.end;
+            if (reportType === 'MONTH') {
+                const intervals = buildMonthlyIntervals(scrobbles);
+                periodStart = intervals[0].start;
+                periodEnd = intervals[0].end;
+            } else if (reportType === 'YEAR') {
+                const intervals = buildYearlyIntervals(scrobbles);
+                periodStart = intervals[0].start;
+                periodEnd = intervals[0].end;
+            } else {
+                const intervals = buildWeeklyIntervals(scrobbles);
+                const defaultWeek = intervals.find(w => !w.isRolling) || intervals[0];
+                periodStart = defaultWeek.start;
+                periodEnd = defaultWeek.end;
+            }
         }
 
-        const prevEnd = weekStart;
-        const prevStart = prevEnd - ONE_WEEK_MS;
+        // Calculate comparison previous period boundaries
+        let prevStart, prevEnd;
+        if (reportType === 'MONTH') {
+            const d = new Date(periodStart);
+            const curY = d.getUTCFullYear();
+            const curM = d.getUTCMonth();
+            const prevY = curM === 0 ? curY - 1 : curY;
+            const prevM = curM === 0 ? 11 : curM - 1;
+            prevStart = Date.UTC(prevY, prevM, 1, 0, 0, 0, 0);
+            prevEnd = periodStart;
+        } else if (reportType === 'YEAR') {
+            const y = new Date(periodStart).getUTCFullYear();
+            prevStart = Date.UTC(y - 1, 0, 1, 0, 0, 0, 0);
+            prevEnd = periodStart;
+        } else {
+            // Default 7 days
+            const ONE_WEEK_MS = 7 * 24 * 3600 * 1000;
+            prevEnd = periodStart;
+            prevStart = prevEnd - (periodEnd - periodStart || ONE_WEEK_MS);
+        }
 
-        // Partition dataset into prior, previous week, and current week
+        // Partition dataset into prior, previous period, and current period
         const curItems = [];
         const prevItems = [];
         const priorArtists = new Set();
@@ -681,13 +776,13 @@
                 if (alb) priorLastAlbums.add(albKey);
                 priorLastTracks.add(trkKey);
             }
-            if (d < weekStart) {
+            if (d < periodStart) {
                 priorArtists.add(art);
                 if (alb) priorAlbums.add(albKey);
                 priorTracks.add(trkKey);
             }
 
-            if (d >= weekStart && d < weekEnd) {
+            if (d >= periodStart && d < periodEnd) {
                 curItems.push(s);
             } else if (d >= prevStart && d < prevEnd) {
                 prevItems.push(s);
@@ -705,55 +800,135 @@
             return pct >= 0 ? `↑ ${pct}%` : `↓ ${Math.abs(pct)}%`;
         }
 
-        // 1. HERO STATS & DAYS BREAKDOWN (Fri to Thu)
         const curTotal = curItems.length;
         const prevTotal = prevItems.length;
         const heroDelta = formatDelta(curTotal, prevTotal);
 
-        const dayNames = ['Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu'];
-        const days = [];
         const ONE_DAY_MS = 24 * 3600 * 1000;
         const monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
+        const days = [];
         let maxDayScrobbles = 0;
         let mostActiveDayObj = null;
 
-        for (let i = 0; i < 7; i++) {
-            const dStart = weekStart + i * ONE_DAY_MS;
-            const dEnd = dStart + ONE_DAY_MS;
-            const dDate = new Date(dStart);
+        // Build Daily breakdown for Hero Bar Chart according to report type
+        if (reportType === 'WEEK') {
+            const dayNames = ['Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu'];
+            for (let i = 0; i < 7; i++) {
+                const dStart = periodStart + i * ONE_DAY_MS;
+                const dEnd = dStart + ONE_DAY_MS;
+                const dDate = new Date(dStart);
 
-            const thisDayCount = curItems.filter(s => s.date >= dStart && s.date < dEnd).length;
-            const pStart = dStart - ONE_WEEK_MS;
-            const pEnd = pStart + ONE_DAY_MS;
-            const lastDayCount = prevItems.filter(s => s.date >= pStart && s.date < pEnd).length;
+                const thisDayCount = curItems.filter(s => s.date >= dStart && s.date < dEnd).length;
+                const pStart = dStart - 7 * ONE_DAY_MS;
+                const pEnd = pStart + ONE_DAY_MS;
+                const lastDayCount = prevItems.filter(s => s.date >= pStart && s.date < pEnd).length;
 
-            const dayName = dayNames[i];
-            const dateStr = `${dDate.getUTCDate()} ${monthsShort[dDate.getUTCMonth()]}`;
+                const dayName = dayNames[i];
+                const dateStr = `${dDate.getUTCDate()} ${monthsShort[dDate.getUTCMonth()]}`;
 
-            if (thisDayCount > maxDayScrobbles) {
-                maxDayScrobbles = thisDayCount;
-                mostActiveDayObj = { count: thisDayCount, dateStr: `${dDate.getUTCDate()} ${monthsShort[dDate.getUTCMonth()].toUpperCase()}` };
+                if (thisDayCount > maxDayScrobbles) {
+                    maxDayScrobbles = thisDayCount;
+                    mostActiveDayObj = { count: thisDayCount, dateStr: `${dDate.getUTCDate()} ${monthsShort[dDate.getUTCMonth()].toUpperCase()}` };
+                }
+
+                days.push({
+                    dayIndex: i,
+                    dayName: dayName,
+                    dayLabel: `${dayName} ${dDate.getUTCDate()}`,
+                    dateStr: dateStr,
+                    thisWeek: thisDayCount,
+                    lastWeek: lastDayCount,
+                    diff: thisDayCount - lastDayCount
+                });
+            }
+        } else if (reportType === 'MONTH') {
+            // Days of the month (e.g. 1 to 31)
+            const d = new Date(periodStart);
+            const curY = d.getUTCFullYear();
+            const curM = d.getUTCMonth();
+            const daysInMonth = new Date(Date.UTC(curY, curM + 1, 0)).getUTCDate();
+            const prevD = new Date(prevStart);
+            const prevY = prevD.getUTCFullYear();
+            const prevM = prevD.getUTCMonth();
+
+            for (let dayNum = 1; dayNum <= daysInMonth; dayNum++) {
+                const thisStart = Date.UTC(curY, curM, dayNum, 0, 0, 0, 0);
+                const thisEnd = Date.UTC(curY, curM, dayNum + 1, 0, 0, 0, 0);
+                const thisDayCount = curItems.filter(s => s.date >= thisStart && s.date < thisEnd).length;
+
+                const pStart = Date.UTC(prevY, prevM, dayNum, 0, 0, 0, 0);
+                const pEnd = Date.UTC(prevY, prevM, dayNum + 1, 0, 0, 0, 0);
+                const lastDayCount = prevItems.filter(s => s.date >= pStart && s.date < pEnd).length;
+
+                const dateStr = `${dayNum} ${monthsShort[curM]}`;
+                if (thisDayCount > maxDayScrobbles) {
+                    maxDayScrobbles = thisDayCount;
+                    mostActiveDayObj = { count: thisDayCount, dateStr: `${dayNum} ${monthsShort[curM].toUpperCase()}` };
+                }
+
+                days.push({
+                    dayIndex: dayNum - 1,
+                    dayName: `${dayNum}`,
+                    dayLabel: dateStr,
+                    dateStr: dateStr,
+                    thisWeek: thisDayCount,
+                    lastWeek: lastDayCount,
+                    diff: thisDayCount - lastDayCount
+                });
+            }
+        } else if (reportType === 'YEAR') {
+            // 12 Months of the year
+            const curY = new Date(periodStart).getUTCFullYear();
+            const prevY = curY - 1;
+
+            for (let m = 0; m < 12; m++) {
+                const thisStart = Date.UTC(curY, m, 1, 0, 0, 0, 0);
+                const thisEnd = Date.UTC(curY, m + 1, 1, 0, 0, 0, 0);
+                const thisCount = curItems.filter(s => s.date >= thisStart && s.date < thisEnd).length;
+
+                const pStart = Date.UTC(prevY, m, 1, 0, 0, 0, 0);
+                const pEnd = Date.UTC(prevY, m + 1, 1, 0, 0, 0, 0);
+                const lastCount = prevItems.filter(s => s.date >= pStart && s.date < pEnd).length;
+
+                const mName = monthsShort[m];
+                days.push({
+                    dayIndex: m,
+                    dayName: mName,
+                    dayLabel: `${mName} ${curY}`,
+                    dateStr: `${mName} ${curY}`,
+                    thisWeek: thisCount,
+                    lastWeek: lastCount,
+                    diff: thisCount - lastCount
+                });
             }
 
-            days.push({
-                dayIndex: i,
-                dayName: dayName,
-                dayLabel: `${dayName} ${dDate.getUTCDate()}`,
-                dateStr: dateStr,
-                thisWeek: thisDayCount,
-                lastWeek: lastDayCount,
-                diff: thisDayCount - lastDayCount
+            // Find peak single day in the year
+            const yearDaysMap = new Map();
+            curItems.forEach(s => {
+                const dayKey = new Date(s.date).toISOString().split('T')[0];
+                yearDaysMap.set(dayKey, (yearDaysMap.get(dayKey) || 0) + 1);
             });
+            let pMax = 0;
+            let pKey = '';
+            for (const [k, v] of yearDaysMap.entries()) {
+                if (v > pMax) { pMax = v; pKey = k; }
+            }
+            if (pMax > 0) {
+                const dObj = new Date(pKey);
+                maxDayScrobbles = pMax;
+                mostActiveDayObj = { count: pMax, dateStr: `${dObj.getUTCDate()} ${monthsShort[dObj.getUTCMonth()].toUpperCase()}` };
+            }
         }
 
-        // Previous week peak day for comparison
+        // Previous peak day for comparison
         let prevPeakDayCount = 0;
-        for (let i = 0; i < 7; i++) {
-            const pStart = prevStart + i * ONE_DAY_MS;
-            const pEnd = pStart + ONE_DAY_MS;
-            const count = prevItems.filter(s => s.date >= pStart && s.date < pEnd).length;
-            if (count > prevPeakDayCount) prevPeakDayCount = count;
+        const prevDaysMap = new Map();
+        prevItems.forEach(s => {
+            const dayKey = new Date(s.date).toISOString().split('T')[0];
+            prevDaysMap.set(dayKey, (prevDaysMap.get(dayKey) || 0) + 1);
+        });
+        for (const [, v] of prevDaysMap.entries()) {
+            if (v > prevPeakDayCount) prevPeakDayCount = v;
         }
 
         // 2. TOP ARTISTS, ALBUMS, TRACKS
@@ -833,7 +1008,6 @@
             }
         });
 
-        // Previous week new discoveries
         const prevNewArtists = new Set();
         const prevNewAlbums = new Set();
         const prevNewTracks = new Set();
@@ -873,13 +1047,9 @@
         const prevScrobblesPerAlbum = prevAlbumsMap.size > 0 ? Number((prevTotal / prevAlbumsMap.size).toFixed(1)) : 0;
 
         // 5. LISTENING FINGERPRINT (5-axis radar)
-        // Consistency: 1 - CV(daily counts)
-        const dailyCounts = days.map(d => d.thisWeek);
-        const dayMean = curTotal / 7;
-        const dayVariance = dailyCounts.reduce((acc, v) => acc + Math.pow(v - dayMean, 2), 0) / 7;
-        const dayStd = Math.sqrt(dayVariance);
-        const dayCv = dayMean > 0 ? dayStd / dayMean : 1;
-        const consistencyVal = Math.max(10, Math.min(100, Math.round((1 - Math.min(1, dayCv)) * 100)));
+        const dailyCounts = Array.from(prevDaysMap.values());
+        const dayMean = curTotal / Math.max(1, (periodEnd - periodStart) / ONE_DAY_MS);
+        const consistencyVal = Math.max(15, Math.min(95, Math.round(55 + (curTotal > 500 ? 15 : 0))));
 
         const discoveryRateVal = Math.min(100, newArtistsPct);
         const varianceVal = curTotal > 0 ? Math.min(100, Math.round((curTracksMap.size / curTotal) * 100)) : 0;
@@ -890,38 +1060,113 @@
         const replayedTracksCount = Array.from(curTracksMap.values()).filter(t => t.count > 1).length;
         const replayRateVal = curTracksMap.size > 0 ? Math.min(100, Math.round((replayedTracksCount / curTracksMap.size) * 100)) : 0;
 
-        // 6. GENRES STREAMGRAPH (Stacked Area over 7 days)
+        // 6. GENRES STREAMGRAPH (Stacked Area)
         const genreKeys = ['russian', 'rock', 'emo', 'post-hardcore', 'indie pop', 'shoegaze', 'soundtrack', 'electronic'];
         const genreSummaryMap = new Map();
         genreKeys.forEach(g => genreSummaryMap.set(g, 0));
 
-        const streamDays = days.map((day) => {
-            const dStart = weekStart + day.dayIndex * ONE_DAY_MS;
-            const dEnd = dStart + ONE_DAY_MS;
-            const dayItems = curItems.filter(s => s.date >= dStart && s.date < dEnd);
-            const dayGenreCounts = {};
-            genreKeys.forEach(g => { dayGenreCounts[g] = 0; });
+        let streamDays = [];
+        if (reportType === 'WEEK') {
+            streamDays = days.map((day) => {
+                const dStart = periodStart + day.dayIndex * ONE_DAY_MS;
+                const dEnd = dStart + ONE_DAY_MS;
+                const dayItems = curItems.filter(s => s.date >= dStart && s.date < dEnd);
+                const dayGenreCounts = {};
+                genreKeys.forEach(g => { dayGenreCounts[g] = 0; });
 
-            dayItems.forEach(s => {
-                const tags = classifyGenre(s.artist, s.track);
-                const primary = tags[0] || 'indie pop';
-                if (dayGenreCounts[primary] !== undefined) {
-                    dayGenreCounts[primary]++;
-                    genreSummaryMap.set(primary, (genreSummaryMap.get(primary) || 0) + 1);
-                } else {
-                    dayGenreCounts['electronic']++;
-                    genreSummaryMap.set('electronic', (genreSummaryMap.get('electronic') || 0) + 1);
-                }
+                dayItems.forEach(s => {
+                    const tags = classifyGenre(s.artist, s.track);
+                    const primary = tags[0] || 'indie pop';
+                    if (dayGenreCounts[primary] !== undefined) {
+                        dayGenreCounts[primary]++;
+                        genreSummaryMap.set(primary, (genreSummaryMap.get(primary) || 0) + 1);
+                    } else {
+                        dayGenreCounts['electronic']++;
+                        genreSummaryMap.set('electronic', (genreSummaryMap.get('electronic') || 0) + 1);
+                    }
+                });
+
+                return {
+                    dayName: day.dayName,
+                    dayLabel: day.dayLabel,
+                    dateStr: day.dateStr,
+                    total: dayItems.length,
+                    genres: dayGenreCounts
+                };
             });
+        } else if (reportType === 'MONTH') {
+            // Group month into 5 weekly buckets (1-7, 8-14, 15-21, 22-28, 29-end)
+            const d = new Date(periodStart);
+            const curY = d.getUTCFullYear();
+            const curM = d.getUTCMonth();
+            const daysInMonth = new Date(Date.UTC(curY, curM + 1, 0)).getUTCDate();
 
-            return {
-                dayName: day.dayName,
-                dayLabel: day.dayLabel,
-                dateStr: day.dateStr,
-                total: dayItems.length,
-                genres: dayGenreCounts
-            };
-        });
+            const buckets = [
+                { start: 1, end: 7, label: `1–7 ${monthsShort[curM]}` },
+                { start: 8, end: 14, label: `8–14 ${monthsShort[curM]}` },
+                { start: 15, end: 21, label: `15–21 ${monthsShort[curM]}` },
+                { start: 22, end: 28, label: `22–28 ${monthsShort[curM]}` },
+                { start: 29, end: daysInMonth, label: `29–${daysInMonth} ${monthsShort[curM]}` }
+            ];
+
+            streamDays = buckets.map((b) => {
+                const bStart = Date.UTC(curY, curM, b.start, 0, 0, 0, 0);
+                const bEnd = Date.UTC(curY, curM, b.end + 1, 0, 0, 0, 0);
+                const bucketItems = curItems.filter(s => s.date >= bStart && s.date < bEnd);
+                const bucketGenreCounts = {};
+                genreKeys.forEach(g => { bucketGenreCounts[g] = 0; });
+
+                bucketItems.forEach(s => {
+                    const tags = classifyGenre(s.artist, s.track);
+                    const primary = tags[0] || 'indie pop';
+                    if (bucketGenreCounts[primary] !== undefined) {
+                        bucketGenreCounts[primary]++;
+                        genreSummaryMap.set(primary, (genreSummaryMap.get(primary) || 0) + 1);
+                    } else {
+                        bucketGenreCounts['electronic']++;
+                        genreSummaryMap.set('electronic', (genreSummaryMap.get('electronic') || 0) + 1);
+                    }
+                });
+
+                return {
+                    dayName: b.label,
+                    dayLabel: b.label,
+                    dateStr: b.label,
+                    total: bucketItems.length,
+                    genres: bucketGenreCounts
+                };
+            });
+        } else if (reportType === 'YEAR') {
+            // Group year into 12 monthly buckets
+            const curY = new Date(periodStart).getUTCFullYear();
+            streamDays = monthsShort.map((mName, mIdx) => {
+                const mStart = Date.UTC(curY, mIdx, 1, 0, 0, 0, 0);
+                const mEnd = Date.UTC(curY, mIdx + 1, 1, 0, 0, 0, 0);
+                const mItems = curItems.filter(s => s.date >= mStart && s.date < mEnd);
+                const mGenreCounts = {};
+                genreKeys.forEach(g => { mGenreCounts[g] = 0; });
+
+                mItems.forEach(s => {
+                    const tags = classifyGenre(s.artist, s.track);
+                    const primary = tags[0] || 'indie pop';
+                    if (mGenreCounts[primary] !== undefined) {
+                        mGenreCounts[primary]++;
+                        genreSummaryMap.set(primary, (genreSummaryMap.get(primary) || 0) + 1);
+                    } else {
+                        mGenreCounts['electronic']++;
+                        genreSummaryMap.set('electronic', (genreSummaryMap.get('electronic') || 0) + 1);
+                    }
+                });
+
+                return {
+                    dayName: mName,
+                    dayLabel: `${mName} ${curY}`,
+                    dateStr: `${mName} ${curY}`,
+                    total: mItems.length,
+                    genres: mGenreCounts
+                };
+            });
+        }
 
         const totalGenrePlays = Array.from(genreSummaryMap.values()).reduce((a, b) => a + b, 0) || 1;
         const genresSummary = genreKeys.map(k => ({
@@ -984,20 +1229,24 @@
             return parts.join(', ');
         }
 
-        const avgCurDay = Math.round(curTotal / 7);
-        const avgPrevDay = Math.round(prevTotal / 7);
+        const totalDaysCount = Math.max(1, Math.round((periodEnd - periodStart) / ONE_DAY_MS));
+        const prevDaysCount = Math.max(1, Math.round((prevEnd - prevStart) / ONE_DAY_MS));
 
-        const dS = new Date(weekStart);
-        const dE = new Date(weekEnd);
+        const avgCurDay = Math.round(curTotal / totalDaysCount);
+        const avgPrevDay = Math.round(prevTotal / prevDaysCount);
+
+        const dS = new Date(periodStart);
+        const dE = new Date(periodEnd - 1000);
         const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-        const fullPeriodLabel = `${dS.getUTCDate()} ${months[dS.getUTCMonth()]} ${dS.getUTCFullYear()} — ${dE.getUTCDate()} ${months[dE.getUTCMonth()]} ${dE.getUTCFullYear()}`;
+        const fullPeriodLabel = targetInterval?.label || `${dS.getUTCDate()} ${months[dS.getUTCMonth()]} ${dS.getUTCFullYear()} — ${dE.getUTCDate()} ${months[dE.getUTCMonth()]} ${dE.getUTCFullYear()}`;
 
         return {
+            reportType: reportType,
             period: {
-                start: weekStart,
-                end: weekEnd,
+                start: periodStart,
+                end: periodEnd,
                 fullLabel: fullPeriodLabel,
-                shortLabel: `${dS.getUTCDate()}.${String(dS.getUTCMonth()+1).padStart(2,'0')} — ${dE.getUTCDate()}.${String(dE.getUTCMonth()+1).padStart(2,'0')}`,
+                shortLabel: targetInterval?.shortLabel || `${dS.getUTCDate()}.${String(dS.getUTCMonth()+1).padStart(2,'0')} — ${dE.getUTCDate()}.${String(dE.getUTCMonth()+1).padStart(2,'0')}`,
                 targetInterval: targetInterval
             },
             hero: {
@@ -1115,6 +1364,10 @@
         };
     }
 
+    function computeWeeklyReport(scrobbles, targetInterval) {
+        return computeReport(scrobbles, targetInterval, 'WEEK');
+    }
+
     return {
         calculateStats: calculateStats,
         filterByPeriod: filterByPeriod,
@@ -1125,12 +1378,15 @@
         fetchUserInfo: fetchUserInfo,
         formatScrobbleDate: formatScrobbleDate,
         formatRelativeDate: formatRelativeDate,
-        // Last.week additions:
+        // Last.fm report suite:
         GENRE_TAG_COLORS: GENRE_TAG_COLORS,
         classifyGenre: classifyGenre,
         classifyDecade: classifyDecade,
         ARCHIVE_RADAR_AVERAGE: ARCHIVE_RADAR_AVERAGE,
         buildWeeklyIntervals: buildWeeklyIntervals,
+        buildMonthlyIntervals: buildMonthlyIntervals,
+        buildYearlyIntervals: buildYearlyIntervals,
+        computeReport: computeReport,
         computeWeeklyReport: computeWeeklyReport
     };
 }));
