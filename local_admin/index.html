@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRUUSHKAA // ARCHIVE_OS - LOCAL CONTROL TERMINAL</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                        display: ['"Space Grotesk"', 'sans-serif'],
+                        sans: ['"Space Grotesk"', 'sans-serif']
+                    },
+                    colors: {
+                        brand: {
+                            orange: '#FF5722',
+                            lime: '#CCFF00',
+                            cyan: '#00E5FF',
+                            violet: '#B388FF',
+                            dark: '#0D0E12',
+                            card: '#15171E',
+                            border: '#232631'
+                        }
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        body {
+            background-color: #0D0E12;
+            color: #FFFFFF;
+            font-family: 'Space Grotesk', sans-serif;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 32px 32px;
+        }
+
+        .brutal-card {
+            border: 2px solid #232631;
+            background: #14161D;
+            box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.8);
+            transition: all 0.15s ease;
+        }
+        .brutal-card:hover {
+            border-color: #383D4E;
+        }
+
+        .brutal-btn {
+            border: 2px solid #000;
+            box-shadow: 3px 3px 0px #000;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+            transition: all 0.1s ease;
+            cursor: pointer;
+            user-select: none;
+        }
+        .brutal-btn:hover {
+            transform: translate(-1px, -1px);
+            box-shadow: 4px 4px 0px #000;
+        }
+        .brutal-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 1px 1px 0px #000;
+        }
+
+        .tab-btn {
+            border-bottom: 3px solid transparent;
+            transition: all 0.15s ease;
+        }
+        .tab-btn.active {
+            border-bottom-color: #CCFF00;
+            color: #CCFF00;
+            background: rgba(204, 255, 0, 0.08);
+        }
+
+        .terminal-box {
+            background: #08090C;
+            border: 2px solid #232631;
+            font-family: 'JetBrains Mono', monospace;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.9);
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0D0E12;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #232631;
+            border: 1px solid #000;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #FF5722;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-[#CCFF00] selection:text-black">
+
+    <!-- TOPBAR -->
+    <header class="border-b-2 border-[#232631] bg-[#111319]/90 backdrop-blur sticky top-0 z-50 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 font-mono">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 bg-[#CCFF00] text-black font-extrabold flex items-center justify-center border-2 border-black shadow-[2px_2px_0px_#000]">
+                    P//A
+                </div>
+                <div>
+                    <div class="font-extrabold text-sm sm:text-base tracking-tight flex items-center gap-2">
+                        <span>PRUUSHKAA // CONTROL TERMINAL</span>
+                        <span class="text-[10px] bg-[#FF5722] text-white px-1.5 py-0.2 border border-black font-bold">LOCAL</span>
+                    </div>
+                    <div class="text-[11px] text-neutral-400 flex items-center gap-2">
+                        <span class="inline-block w-2 h-2 rounded-full bg-[#CCFF00] animate-pulse"></span>
+                        <span>SERVER: 127.0.0.1:3001</span>
+                        <span class="text-neutral-600">|</span>
+                        <span id="git-branch-badge" class="text-[#00E5FF]">BRANCH: main</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+                <!-- Git status pill -->
+                <div id="git-quick-pill" class="px-2.5 py-1 bg-black border border-[#232631] flex items-center gap-1.5 font-bold cursor-pointer hover:border-[#CCFF00]" onclick="switchTab('git')">
+                    <span id="git-status-dot" class="w-2 h-2 rounded-full bg-[#CCFF00]"></span>
+                    <span id="git-status-text">GIT: СИНХРОНИЗИРОВАНО</span>
+                </div>
+
+                <a href="/" target="_blank" class="brutal-btn px-3 py-1 bg-[#00E5FF] text-black flex items-center gap-1.5 font-bold">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                    <span class="hidden sm:inline">САЙТ</span>
+                </a>
+
+                <button id="sfx-toggle" onclick="toggleSfx()" class="brutal-btn px-2.5 py-1 bg-[#232631] text-white text-xs font-bold" title="Звуки кликов">
+                    <i class="fa-solid fa-volume-high"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- NAVIGATION TABS -->
+    <div class="border-b border-[#232631] bg-[#14161D]">
+        <div class="max-w-7xl mx-auto px-4 flex overflow-x-auto gap-1 font-mono text-xs font-bold">
+            <button class="tab-btn active px-4 py-3 flex items-center gap-2 uppercase shrink-0" onclick="switchTab('photos')">
+                <i class="fa-solid fa-camera-retro text-[#FF5722]"></i>
+                <span>ФОТОАРХИВ</span>
+                <span id="badge-photos-count" class="bg-black text-[#CCFF00] px-1.5 py-0.5 border border-[#232631] text-[10px]">0</span>
+            </button>
+            <button class="tab-btn px-4 py-3 flex items-center gap-2 uppercase shrink-0" onclick="switchTab('wiki')">
+                <i class="fa-solid fa-book-open text-[#00E5FF]"></i>
+                <span>ВИКИ СРП</span>
+                <span id="badge-wiki-count" class="bg-black text-[#00E5FF] px-1.5 py-0.5 border border-[#232631] text-[10px]">0</span>
+            </button>
+            <button class="tab-btn px-4 py-3 flex items-center gap-2 uppercase shrink-0" onclick="switchTab('tracks')">
+                <i class="fa-solid fa-route text-[#CCFF00]"></i>
+                <span>GPX МАРШРУТЫ</span>
+                <span id="badge-tracks-count" class="bg-black text-[#FF5722] px-1.5 py-0.5 border border-[#232631] text-[10px]">0</span>
+            </button>
+            <button class="tab-btn px-4 py-3 flex items-center gap-2 uppercase shrink-0" onclick="switchTab('git')">
+                <i class="fa-brands fa-github text-[#B388FF]"></i>
+                <span>GIT ПУБЛИКАЦИЯ</span>
+                <span id="badge-git-changes" class="bg-[#FF5722] text-white px-1.5 py-0.5 border border-black text-[10px] hidden">0</span>
+            </button>
+            <button class="tab-btn px-4 py-3 flex items-center gap-2 uppercase shrink-0" onclick="switchTab('settings')">
+                <i class="fa-solid fa-sliders text-neutral-400"></i>
+                <span>НАСТРОЙКИ</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN CONTAINER -->
+    <main class="max-w-7xl mx-auto w-full px-4 py-6 flex-1">
+
+        <!-- ============================================================== -->
+        <!-- TAB 1: ФОТОАРХИВ -->
+        <!-- ============================================================== -->
+        <section id="tab-photos" class="space-y-6">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h1 class="text-2xl font-extrabold uppercase tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-camera-retro text-[#FF5722]"></i>
+                        <span>МЕДИА-ХРАНИЛИЩЕ // ФОТОАРХИВ</span>
+                    </h1>
+                    <p class="text-xs text-neutral-400 font-mono mt-1">
+                        Загрузка новых кадров, автоматическое сохранение файлов в public/photos/ и моментальное добавление на сайт.
+                    </p>
+                </div>
+                <button onclick="document.getElementById('photo-upload-form').scrollIntoView({ behavior: 'smooth' })" class="brutal-btn px-4 py-2 bg-[#CCFF00] text-black flex items-center gap-2 text-xs">
+                    <i class="fa-solid fa-plus"></i> ДОБАВИТЬ КАДР
+                </button>
+            </div>
+
+            <!-- Upload Card -->
+            <div id="photo-upload-form" class="brutal-card p-5 border-2 border-[#232631]">
+                <div class="border-b-2 border-black/50 pb-3 mb-4 flex items-center justify-between">
+                    <h2 class="font-extrabold uppercase text-sm font-mono text-[#CCFF00] flex items-center gap-2">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>ФОРМА ЗАГРУЗКИ КАДРА</span>
+                    </h2>
+                    <span class="text-[11px] font-mono text-neutral-400">АВТОСЖАТИЕ В ВЕБ-ФОРМАТ</span>
+                </div>
+
+                <form onsubmit="handleSavePhoto(event)" class="space-y-4 font-mono text-xs">
+                    <!-- Drop Zone -->
+                    <div id="photo-dropzone" 
+                         ondragover="handleDragOver(event)" 
+                         ondragleave="handleDragLeave(event)" 
+                         ondrop="handleDropFile(event)"
+                         class="border-2 border-dashed border-[#232631] bg-[#0A0B0E] p-6 text-center cursor-pointer hover:border-[#CCFF00] transition-colors relative">
+                        <input type="file" id="photo-file-input" accept="image/*" class="hidden" onchange="handleSelectPhotoFile(event)">
+                        
+                        <div id="dropzone-prompt" class="space-y-2 pointer-events-none">
+                            <i class="fa-solid fa-image text-3xl text-neutral-600"></i>
+                            <div class="font-bold text-sm text-neutral-200">
+                                Перетащите изображение сюда или <span class="text-[#CCFF00] underline">выберите файл</span>
+                            </div>
+                            <div class="text-[11px] text-neutral-500">
+                                Поддерживаются JPEG, PNG, WebP (автоматическая оптимизация до макс. 1920px)
+                            </div>
+                        </div>
+
+                        <!-- Preview in dropzone -->
+                        <div id="dropzone-preview" class="hidden flex items-center justify-center gap-4 text-left">
+                            <img id="preview-img" src="" alt="Preview" class="w-24 h-24 object-cover border-2 border-black shadow-[3px_3px_0px_#CCFF00]">
+                            <div class="space-y-1">
+                                <div id="preview-name" class="font-bold text-white text-sm">filename.jpg</div>
+                                <div id="preview-size" class="text-neutral-400 text-xs">0 KB</div>
+                                <button type="button" onclick="clearSelectedPhoto(event)" class="text-[#FF5722] hover:underline text-xs font-bold">
+                                    <i class="fa-solid fa-xmark mr-1"></i> Выбрать другой
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fields Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="sm:col-span-2">
+                            <label class="font-bold block mb-1 text-neutral-300">НАЗВАНИЕ КАДРА:</label>
+                            <input type="text" id="photo-title" required placeholder="Напр: NIGHT_STATION_CHRONICLE" class="w-full p-2.5 bg-[#0A0B0E] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="font-bold block mb-1 text-neutral-300">КАТЕГОРИЯ:</label>
+                            <select id="photo-category" class="w-full p-2.5 bg-[#0A0B0E] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                                <option value="ИРЛ / АРХИВ">ИРЛ / АРХИВ</option>
+                                <option value="СРП / ХРОНИКА">СРП / ХРОНИКА</option>
+                                <option value="СКРИНШОТЫ">СКРИНШОТЫ</option>
+                                <option value="АРТЫ / ГРАФИКА">АРТЫ / ГРАФИКА</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label class="font-bold block mb-1 text-neutral-300">ДАТА (ГГГГ.ММ):</label>
+                            <input type="text" id="photo-date" placeholder="2026.11" class="w-full p-2.5 bg-[#0A0B0E] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="font-bold block mb-1 text-neutral-300">ИЛИ ПРЯМАЯ ССЫЛКА НА ИЗОБРАЖЕНИЕ (URL):</label>
+                            <input type="text" id="photo-url" placeholder="https://example.com/image.jpg (если файл в сети)" class="w-full p-2.5 bg-[#0A0B0E] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="font-bold block mb-1 text-neutral-300">ОПИСАНИЕ / ЗАМЕТКА:</label>
+                        <input type="text" id="photo-desc" placeholder="Краткое описание момента или архивные метаданные..." class="w-full p-2.5 bg-[#0A0B0E] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                    </div>
+
+                    <!-- Storage mode checkbox -->
+                    <div class="p-3 bg-[#0A0B0E] border border-[#232631] flex items-center justify-between">
+                        <label class="flex items-center gap-2.5 cursor-pointer text-xs">
+                            <input type="checkbox" id="photo-save-file" checked class="w-4 h-4 accent-[#CCFF00]">
+                            <span class="font-bold">Сохранить физическим файлом в <code class="text-[#CCFF00]">public/photos/</code></span>
+                        </label>
+                        <span class="text-[11px] text-neutral-500 hidden sm:inline">Рекомендуется: база остаётся лёгкой</span>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button type="submit" id="btn-save-photo" class="brutal-btn px-6 py-2.5 bg-[#FF5722] text-white flex items-center gap-2">
+                            <i class="fa-solid fa-floppy-disk"></i> СОХРАНИТЬ В АРХИВ
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Existing Photos List -->
+            <div class="space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="font-extrabold uppercase text-sm">КАДРЫ В БАЗЕ:</span>
+                        <span id="photos-total-count" class="px-2 py-0.5 bg-[#CCFF00] text-black font-extrabold">0</span>
+                    </div>
+                    <!-- Category filter -->
+                    <div id="photos-filter-bar" class="flex flex-wrap gap-1.5">
+                        <button onclick="filterPhotos('ALL')" class="brutal-btn px-2.5 py-1 bg-black text-[#CCFF00] border-black text-[11px]">ВСЕ</button>
+                    </div>
+                </div>
+
+                <div id="photos-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <!-- Cards injected by JS -->
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ============================================================== -->
+        <!-- TAB 2: ВИКИ СРП -->
+        <!-- ============================================================== -->
+        <section id="tab-wiki" class="space-y-6 hidden">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h1 class="text-2xl font-extrabold uppercase tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-book-open text-[#00E5FF]"></i>
+                        <span>АРХИВ ВИКИ СРП // РЕДАКТОР СТАТЕЙ</span>
+                    </h1>
+                    <p class="text-xs text-neutral-400 font-mono mt-1">
+                        Создание и редактирование лора партии, уставов и хроник событий с живым предпросмотром Markdown.
+                    </p>
+                </div>
+                <button onclick="startNewWikiArticle()" class="brutal-btn px-4 py-2 bg-[#00E5FF] text-black flex items-center gap-2 text-xs">
+                    <i class="fa-solid fa-plus"></i> НОВАЯ СТАТЬЯ
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Articles List Column -->
+                <div class="lg:col-span-4 space-y-3 font-mono">
+                    <div class="flex items-center justify-between text-xs font-bold text-neutral-400">
+                        <span>РЕЕСТР СТАТЕЙ</span>
+                        <span id="wiki-count-label">0 статей</span>
+                    </div>
+                    <div id="wiki-articles-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+                        <!-- Injected by JS -->
+                    </div>
+                </div>
+
+                <!-- Editor Column -->
+                <div class="lg:col-span-8">
+                    <div class="brutal-card p-5 border-2 border-[#232631] space-y-4 font-mono text-xs">
+                        <div class="border-b-2 border-black/50 pb-2 flex items-center justify-between">
+                            <span id="wiki-editor-mode-badge" class="font-extrabold uppercase text-sm text-[#00E5FF]">
+                                РЕДАКТИРОВАНИЕ СТАТЬИ
+                            </span>
+                            <span id="wiki-article-id-badge" class="text-neutral-500 font-mono text-[11px]">ID: NEW</span>
+                        </div>
+
+                        <form onsubmit="handleSaveWikiArticle(event)" class="space-y-3">
+                            <input type="hidden" id="wiki-id">
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div class="sm:col-span-2">
+                                    <label class="font-bold block mb-1 text-neutral-300">НАЗВАНИЕ СТАТЬИ:</label>
+                                    <input type="text" id="wiki-title" required placeholder="Напр: ХРОНИКА БИТВЫ ЗА СПАВН" class="w-full p-2.5 bg-[#0A0B0E] border-2 border-[#232631] font-bold text-white focus:border-[#00E5FF] focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="font-bold block mb-1 text-neutral-300">КАТЕГОРИЯ:</label>
+                                    <select id="wiki-category" class="w-full p-2.5 bg-[#0A0B0E] border-2 border-[#232631] font-bold text-white focus:border-[#00E5FF] focus:outline-none">
+                                        <option value="ОСНОВНОЕ">ОСНОВНОЕ</option>
+                                        <option value="ИСТОРИЯ / ЛОР">ИСТОРИЯ / ЛОР</option>
+                                        <option value="ХРОНИКИ">ХРОНИКИ</option>
+                                        <option value="АРХИВ">АРХИВ</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="font-bold block mb-1 text-neutral-300">АВТОР:</label>
+                                    <input type="text" id="wiki-author" value="pruushkaa" class="w-full p-2 bg-[#0A0B0E] border-2 border-[#232631] font-bold text-white focus:border-[#00E5FF] focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="font-bold block mb-1 text-neutral-300">ДАТА (ГГГГ.ММ):</label>
+                                    <input type="text" id="wiki-date" placeholder="2026.11" class="w-full p-2 bg-[#0A0B0E] border-2 border-[#232631] font-bold text-white focus:border-[#00E5FF] focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="font-bold block mb-1 text-neutral-300">ТЕГИ (ЧЕРЕЗ ЗАПЯТУЮ):</label>
+                                    <input type="text" id="wiki-tags" placeholder="СРП, хроника, BV2" class="w-full p-2 bg-[#0A0B0E] border-2 border-[#232631] font-bold text-white focus:border-[#00E5FF] focus:outline-none">
+                                </div>
+                            </div>
+
+                            <!-- Markdown Tools -->
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="font-bold text-neutral-300">ТЕКСТ СТАТЬИ (MARKDOWN):</label>
+                                    <div class="flex gap-1 text-[11px]">
+                                        <button type="button" onclick="insertMd('**', '**')" class="px-2 py-0.5 bg-[#232631] hover:bg-[#00E5FF] hover:text-black font-bold">B</button>
+                                        <button type="button" onclick="insertMd('*', '*')" class="px-2 py-0.5 bg-[#232631] hover:bg-[#00E5FF] hover:text-black font-bold italic">I</button>
+                                        <button type="button" onclick="insertMd('## ', '')" class="px-2 py-0.5 bg-[#232631] hover:bg-[#00E5FF] hover:text-black font-bold">H2</button>
+                                        <button type="button" onclick="insertMd('> ', '')" class="px-2 py-0.5 bg-[#232631] hover:bg-[#00E5FF] hover:text-black font-bold">Цитата</button>
+                                        <button type="button" onclick="insertMd('`', '`')" class="px-2 py-0.5 bg-[#232631] hover:bg-[#00E5FF] hover:text-black font-bold">Код</button>
+                                    </div>
+                                </div>
+                                <textarea id="wiki-content" rows="12" oninput="updateWikiPreview()" placeholder="Пишите текст статьи в формате Markdown..." class="w-full p-3 bg-[#0A0B0E] border-2 border-[#232631] font-mono text-white text-xs leading-relaxed focus:border-[#00E5FF] focus:outline-none"></textarea>
+                            </div>
+
+                            <!-- Live preview card -->
+                            <div class="border border-[#232631] p-3 bg-[#08090C]">
+                                <div class="text-[10px] text-neutral-500 uppercase font-bold mb-2">ПРЕДПРОСМОТР В РЕАЛЬНОМ ВРЕМЕНИ:</div>
+                                <div id="wiki-preview-box" class="prose prose-invert max-w-none text-xs text-neutral-300 font-sans leading-relaxed">
+                                    <!-- Injected by updateWikiPreview -->
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between pt-2">
+                                <button type="button" id="btn-delete-wiki" onclick="handleDeleteCurrentWiki()" class="brutal-btn px-4 py-2 bg-red-600 text-white hidden">
+                                    <i class="fa-solid fa-trash mr-1"></i> УДАЛИТЬ СТАТЬЮ
+                                </button>
+                                <div class="flex gap-2 ml-auto">
+                                    <button type="button" onclick="startNewWikiArticle()" class="brutal-btn px-4 py-2 bg-[#232631] text-white">
+                                        ОЧИСТИТЬ
+                                    </button>
+                                    <button type="submit" class="brutal-btn px-6 py-2 bg-[#00E5FF] text-black font-extrabold">
+                                        <i class="fa-solid fa-floppy-disk mr-1"></i> СОХРАНИТЬ СТАТЬЮ
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ============================================================== -->
+        <!-- TAB 3: GPX ТРЕКИ -->
+        <!-- ============================================================== -->
+        <section id="tab-tracks" class="space-y-6 hidden">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h1 class="text-2xl font-extrabold uppercase tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-route text-[#CCFF00]"></i>
+                        <span>GPX МАРШРУТЫ // ТЕЛЕМЕТРИЯ</span>
+                    </h1>
+                    <p class="text-xs text-neutral-400 font-mono mt-1">
+                        Загрузка треков заездов. Сервер автоматически рассчитает дистанцию, высоту и обновит манифест.
+                    </p>
+                </div>
+                <button onclick="handleResyncTracks()" class="brutal-btn px-4 py-2 bg-[#232631] text-white flex items-center gap-2 text-xs">
+                    <i class="fa-solid fa-rotate"></i> ПЕРЕСИНХРОНИЗИРОВАТЬ
+                </button>
+            </div>
+
+            <!-- Upload Track Card -->
+            <div class="brutal-card p-5 border-2 border-[#232631]">
+                <div class="border-b-2 border-black/50 pb-2 mb-4">
+                    <h2 class="font-extrabold uppercase text-sm font-mono text-[#CCFF00]">
+                        <i class="fa-solid fa-file-arrow-up mr-1"></i> ЗАГРУЗКА .GPX ФАЙЛА
+                    </h2>
+                </div>
+
+                <div id="gpx-dropzone" 
+                     ondragover="handleGpxDragOver(event)" 
+                     ondragleave="handleGpxDragLeave(event)" 
+                     ondrop="handleGpxDrop(event)"
+                     class="border-2 border-dashed border-[#232631] bg-[#0A0B0E] p-6 text-center cursor-pointer hover:border-[#CCFF00] transition-colors">
+                    <input type="file" id="gpx-file-input" accept=".gpx" class="hidden" onchange="handleGpxSelect(event)">
+                    <i class="fa-solid fa-map-location-dot text-3xl text-neutral-600 mb-2"></i>
+                    <div class="font-bold text-sm text-neutral-200">
+                        Перетащите файл <code class="text-[#CCFF00]">.gpx</code> сюда или нажмите для выбора
+                    </div>
+                    <div class="text-[11px] text-neutral-500 font-mono mt-1">
+                        Файл будет автоматически скопирован в public/tracks/ с расчётом высот и расстояния
+                    </div>
+                </div>
+            </div>
+
+            <!-- Existing Tracks List -->
+            <div class="space-y-4">
+                <div class="flex items-center justify-between font-mono text-xs">
+                    <span class="font-extrabold uppercase text-sm">ЗАРЕГИСТРИРОВАННЫЕ МАРШРУТЫ:</span>
+                    <span id="tracks-total-count" class="px-2 py-0.5 bg-[#FF5722] text-white font-extrabold">0 ТРЕКОВ</span>
+                </div>
+
+                <div id="tracks-list" class="space-y-3 font-mono text-xs">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ============================================================== -->
+        <!-- TAB 4: GIT ПУБЛИКАЦИЯ -->
+        <!-- ============================================================== -->
+        <section id="tab-git" class="space-y-6 hidden">
+            <div>
+                <h1 class="text-2xl font-extrabold uppercase tracking-tight flex items-center gap-2">
+                    <i class="fa-brands fa-github text-[#B388FF]"></i>
+                    <span>ПУБЛИКАЦИЯ В GITHUB PAGES // ДЕПЛОЙ</span>
+                </h1>
+                <p class="text-xs text-neutral-400 font-mono mt-1">
+                    Отправка всех изменений прямо в репозиторий GitHub в 1 клик. Запускает автоматическую пересборку сайта.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Status & Action Box -->
+                <div class="lg:col-span-6 space-y-4 font-mono text-xs">
+                    <div class="brutal-card p-5 border-2 border-[#232631] space-y-4">
+                        <div class="border-b-2 border-black/50 pb-2 flex items-center justify-between">
+                            <span class="font-extrabold uppercase text-[#CCFF00]">СТАТУС РЕПОЗИТОРИЯ:</span>
+                            <span id="git-working-tree-badge" class="px-2 py-0.5 bg-black text-[#CCFF00] border border-[#232631] font-bold">ПРОВЕРКА...</span>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="text-neutral-400">ПОСЛЕДНИЙ КОММИТ:</div>
+                            <div id="git-last-commit-box" class="p-2.5 bg-[#08090C] border border-[#232631] text-neutral-300 font-mono">
+                                Загрузка...
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-neutral-400">ИЗМЕНЕННЫЕ ФАЙЛЫ:</span>
+                                <span id="git-changes-count" class="text-[#FF5722] font-bold">0 файлов</span>
+                            </div>
+                            <div id="git-modified-files-list" class="p-2.5 bg-[#08090C] border border-[#232631] max-h-48 overflow-y-auto space-y-1 text-[11px] text-neutral-300">
+                                <!-- Injected by JS -->
+                            </div>
+                        </div>
+
+                        <div class="space-y-2 pt-2">
+                            <label class="font-bold block text-neutral-300">СООБЩЕНИЕ КОММИТА:</label>
+                            <input type="text" id="git-commit-msg" placeholder="Обновление через Local Admin..." class="w-full p-2.5 bg-[#08090C] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                        </div>
+
+                        <button id="btn-publish-git" onclick="handlePublishGit()" class="brutal-btn w-full py-3 bg-[#CCFF00] text-black font-extrabold text-sm flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-rocket"></i>
+                            <span>ОПУБЛИКОВАТЬ НА GITHUB (COMMIT & PUSH)</span>
+                        </button>
+                    </div>
+
+                    <!-- Direct Links -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <a href="https://github.com/Pruushkaa/Teleprushka" target="_blank" class="brutal-card p-3 text-center hover:border-[#00E5FF] transition-colors">
+                            <i class="fa-brands fa-github text-xl text-[#00E5FF] mb-1"></i>
+                            <div class="font-bold text-[11px]">РЕПОЗИТОРИЙ GITHUB</div>
+                        </a>
+                        <a href="https://github.com/Pruushkaa/Teleprushka/actions" target="_blank" class="brutal-card p-3 text-center hover:border-[#FF5722] transition-colors">
+                            <i class="fa-solid fa-bolt text-xl text-[#FF5722] mb-1"></i>
+                            <div class="font-bold text-[11px]">ДЕПЛОИ ACTIONS</div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Terminal Output Box -->
+                <div class="lg:col-span-6 flex flex-col">
+                    <div class="flex items-center justify-between px-3 py-1.5 bg-[#14161D] border-t-2 border-x-2 border-[#232631] font-mono text-[11px]">
+                        <span class="text-neutral-400 font-bold flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#CCFF00]"></span>
+                            TERMINAL_OUTPUT // STDOUT
+                        </span>
+                        <button onclick="clearTerminal()" class="text-neutral-500 hover:text-white">ОЧИСТИТЬ</button>
+                    </div>
+                    <div id="git-terminal" class="terminal-box p-4 text-[#CCFF00] text-xs leading-relaxed flex-1 min-h-[360px] max-h-[500px] overflow-y-auto space-y-1">
+                        <div>> PRUUSHKAA // ARCHIVE_OS GIT ENGINE INITIALIZED.</div>
+                        <div>> Ready to stage, commit and push changes.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ============================================================== -->
+        <!-- TAB 5: НАСТРОЙКИ -->
+        <!-- ============================================================== -->
+        <section id="tab-settings" class="space-y-6 hidden">
+            <div>
+                <h1 class="text-2xl font-extrabold uppercase tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-neutral-400"></i>
+                    <span>КОНФИГУРАЦИЯ СИСТЕМЫ</span>
+                </h1>
+                <p class="text-xs text-neutral-400 font-mono mt-1">
+                    Управление ключами API Last.fm, статусом Discord и паролем администратора.
+                </p>
+            </div>
+
+            <div class="brutal-card p-6 border-2 border-[#232631] max-w-2xl font-mono text-xs space-y-5">
+                <form onsubmit="handleSaveSettings(event)" class="space-y-4">
+                    <div>
+                        <label class="font-bold block mb-1 text-neutral-300">ПАРОЛЬ АДМИНИСТРАТОРА (LOCAL):</label>
+                        <input type="text" id="setting-admin-pass" class="w-full p-2.5 bg-[#08090C] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="font-bold block mb-1 text-neutral-300">LAST.FM USERNAME:</label>
+                            <input type="text" id="setting-lastfm-user" class="w-full p-2.5 bg-[#08090C] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="font-bold block mb-1 text-neutral-300">LAST.FM API KEY:</label>
+                            <input type="text" id="setting-lastfm-key" class="w-full p-2.5 bg-[#08090C] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label class="font-bold block mb-1 text-neutral-300">DISCORD USER ID:</label>
+                            <input type="text" id="setting-discord-id" class="w-full p-2.5 bg-[#08090C] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="font-bold block mb-1 text-neutral-300">СТАТУС:</label>
+                            <select id="setting-discord-status" class="w-full p-2.5 bg-[#08090C] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                                <option value="online">В сети (online)</option>
+                                <option value="idle">Не активен (idle)</option>
+                                <option value="dnd">Не беспокоить (dnd)</option>
+                                <option value="offline">Не в сети (offline)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="font-bold block mb-1 text-neutral-300">ТЕКСТ СТАТУСА:</label>
+                            <input type="text" id="setting-discord-text" class="w-full p-2.5 bg-[#08090C] border-2 border-[#232631] font-bold text-white focus:border-[#CCFF00] focus:outline-none">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between pt-3 border-t border-[#232631]">
+                        <button type="button" onclick="downloadDbBackup()" class="brutal-btn px-4 py-2 bg-[#232631] text-white">
+                            <i class="fa-solid fa-download mr-1"></i> СКАЧАТЬ DB.JSON
+                        </button>
+                        <button type="submit" class="brutal-btn px-6 py-2 bg-[#CCFF00] text-black font-extrabold">
+                            <i class="fa-solid fa-floppy-disk mr-1"></i> СОХРАНИТЬ НАСТРОЙКИ
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2 font-mono text-xs pointer-events-none"></div>
+
+    <!-- CLIENT SCRIPT -->
+    <script>
+        // State
+        let appData = {
+            db: { photos: [], wiki: [], tracks: [], adminPass: 'admin' },
+            tracks: [],
+            git: { clean: true, statusText: '', branch: 'main', lastCommit: '' }
+        };
+        let currentPhotoFileBase64 = null;
+        let currentPhotoFileName = null;
+        let selectedCategoryFilter = 'ALL';
+        let sfxEnabled = true;
+
+        // Sound synthesizer (Web Audio API)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSfx(type = 'click') {
+            if (!sfxEnabled || !audioCtx) return;
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                const now = audioCtx.currentTime;
+
+                if (type === 'click') {
+                    osc.frequency.setValueAtTime(600, now);
+                    osc.frequency.exponentialRampToValueAtTime(300, now + 0.04);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.04);
+                    osc.start(now);
+                    osc.stop(now + 0.04);
+                } else if (type === 'success') {
+                    osc.frequency.setValueAtTime(523.25, now);
+                    osc.frequency.setValueAtTime(659.25, now + 0.08);
+                    osc.frequency.setValueAtTime(783.99, now + 0.16);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.28);
+                    osc.start(now);
+                    osc.stop(now + 0.28);
+                } else if (type === 'error') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(180, now);
+                    osc.frequency.linearRampToValueAtTime(80, now + 0.15);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
+                }
+            } catch (e) {}
+        }
+
+        function toggleSfx() {
+            sfxEnabled = !sfxEnabled;
+            const btn = document.getElementById('sfx-toggle');
+            btn.innerHTML = `<i class="fa-solid fa-volume-${sfxEnabled ? 'high' : 'xmark'}"></i>`;
+            showToast(sfxEnabled ? 'ЗВУК ВКЛЮЧЕН' : 'ЗВУК ВЫКЛЮЧЕН');
+        }
+
+        function showToast(msg, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const el = document.createElement('div');
+            el.className = `p-3 brutal-btn pointer-events-auto border-2 border-black flex items-center gap-2 ${
+                type === 'error' ? 'bg-[#FF5722] text-white' : (type === 'warn' ? 'bg-yellow-400 text-black' : 'bg-[#CCFF00] text-black')
+            }`;
+            el.innerHTML = `<i class="fa-solid ${type === 'error' ? 'fa-triangle-exclamation' : 'fa-circle-check'}"></i> <span>${msg}</span>`;
+            container.appendChild(el);
+            setTimeout(() => {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(10px)';
+                setTimeout(() => el.remove(), 200);
+            }, 3000);
+        }
+
+        function logTerminal(text, isError = false) {
+            const term = document.getElementById('git-terminal');
+            const line = document.createElement('div');
+            if (isError) line.className = 'text-[#FF5722] font-bold';
+            line.textContent = `> ${text}`;
+            term.appendChild(line);
+            term.scrollTop = term.scrollHeight;
+        }
+
+        function clearTerminal() {
+            document.getElementById('git-terminal').innerHTML = '<div>> TERMINAL CLEARED.</div>';
+        }
+
+        // Tab Switching
+        function switchTab(tabId) {
+            playSfx('click');
+            const tabs = ['photos', 'wiki', 'tracks', 'git', 'settings'];
+            tabs.forEach(t => {
+                const el = document.getElementById(`tab-${t}`);
+                if (el) el.classList.toggle('hidden', t !== tabId);
+            });
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.getAttribute('onclick')?.includes(tabId)) {
+                    btn.classList.add('active');
+                }
+            });
+            if (tabId === 'git') refreshGitStatus();
+        }
+
+        // --- FETCH FULL SYSTEM DATA ---
+        async function loadAllData() {
+            try {
+                const res = await fetch('/api/admin/info');
+                if (!res.ok) throw new Error('Ошибка загрузки данных');
+                const data = await res.json();
+                appData = data;
+                renderPhotos();
+                renderWiki();
+                renderTracks();
+                renderGitStatus();
+                renderSettings();
+            } catch (err) {
+                showToast('НЕ УДАЛОСЬ ПОДКЛЮЧИТЬСЯ К СЕРВЕРУ', 'error');
+                console.error(err);
+            }
+        }
+
+        // =================================================================
+        // PHOTOS MODULE
+        // =================================================================
+        function handleDragOver(e) {
+            e.preventDefault();
+            document.getElementById('photo-dropzone').classList.add('border-[#CCFF00]', 'bg-[#15171E]');
+        }
+        function handleDragLeave(e) {
+            e.preventDefault();
+            document.getElementById('photo-dropzone').classList.remove('border-[#CCFF00]', 'bg-[#15171E]');
+        }
+        function handleDropFile(e) {
+            e.preventDefault();
+            handleDragLeave(e);
+            const file = e.dataTransfer?.files?.[0];
+            if (file) processSelectedPhoto(file);
+        }
+        function handleSelectPhotoFile(e) {
+            const file = e.target.files?.[0];
+            if (file) processSelectedPhoto(file);
+        }
+
+        // Image compression helper (Client-side Canvas)
+        function compressImage(file, maxWidth = 1920, quality = 0.85) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        let { width, height } = img;
+                        if (width > maxWidth) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', quality));
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function processSelectedPhoto(file) {
+            showToast('ОПТИМИЗАЦИЯ И СЖАТИЕ СНИМКА...');
+            currentPhotoFileName = file.name;
+            currentPhotoFileBase64 = await compressImage(file);
+
+            document.getElementById('preview-img').src = currentPhotoFileBase64;
+            document.getElementById('preview-name').textContent = file.name;
+            document.getElementById('preview-size').textContent = `${(file.size / 1024).toFixed(1)} KB (сжато в веб-формат)`;
+            
+            document.getElementById('dropzone-prompt').classList.add('hidden');
+            document.getElementById('dropzone-preview').classList.remove('hidden');
+
+            const titleInput = document.getElementById('photo-title');
+            if (!titleInput.value) {
+                titleInput.value = file.name.replace(/\.[^/.]+$/, '').toUpperCase();
+            }
+            playSfx('success');
+        }
+
+        function clearSelectedPhoto(e) {
+            if (e) e.stopPropagation();
+            currentPhotoFileBase64 = null;
+            currentPhotoFileName = null;
+            document.getElementById('photo-file-input').value = '';
+            document.getElementById('dropzone-prompt').classList.remove('hidden');
+            document.getElementById('dropzone-preview').classList.add('hidden');
+        }
+
+        document.getElementById('photo-dropzone').addEventListener('click', () => {
+            if (!currentPhotoFileBase64) {
+                document.getElementById('photo-file-input').click();
+            }
+        });
+
+        async function handleSavePhoto(e) {
+            e.preventDefault();
+            playSfx('click');
+
+            const title = document.getElementById('photo-title').value.trim();
+            const category = document.getElementById('photo-category').value;
+            const date = document.getElementById('photo-date').value.trim() || new Date().toISOString().slice(0, 7).replace('-', '.');
+            const desc = document.getElementById('photo-desc').value.trim();
+            const urlInput = document.getElementById('photo-url').value.trim();
+            const saveAsFile = document.getElementById('photo-save-file').checked;
+
+            if (!currentPhotoFileBase64 && !urlInput) {
+                showToast('ВЫБЕРИТЕ ФАЙЛ ИЛИ УКАЖИТЕ URL', 'warn');
+                return;
+            }
+
+            const btn = document.getElementById('btn-save-photo');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> СОХРАНЕНИЕ...';
+
+            try {
+                const res = await fetch('/api/admin/photos/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title,
+                        category,
+                        date,
+                        desc,
+                        fileBase64: currentPhotoFileBase64,
+                        filename: currentPhotoFileName,
+                        fileUrl: urlInput,
+                        saveAsFile
+                    })
+                });
+
+                if (!res.ok) throw new Error('Ошибка сервера');
+                const data = await res.json();
+                appData.db.photos = data.photos;
+                
+                showToast('КАДР УСПЕШНО ДОБАВЛЕН!');
+                playSfx('success');
+                
+                // Reset form
+                document.getElementById('photo-title').value = '';
+                document.getElementById('photo-desc').value = '';
+                document.getElementById('photo-url').value = '';
+                clearSelectedPhoto();
+                renderPhotos();
+                refreshGitStatus();
+            } catch (err) {
+                showToast('ОШИБКА СОХРАНЕНИЯ ФОТО', 'error');
+                playSfx('error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> СОХРАНИТЬ В АРХИВ';
+            }
+        }
+
+        async function handleDeletePhoto(id) {
+            if (!confirm('Точно удалить этот кадр из базы?')) return;
+            playSfx('click');
+            try {
+                const res = await fetch('/api/admin/photos/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                appData.db.photos = data.photos;
+                showToast('КАДР УДАЛЕН');
+                renderPhotos();
+                refreshGitStatus();
+            } catch (e) {
+                showToast('ОШИБКА ПРИ УДАЛЕНИИ', 'error');
+            }
+        }
+
+        function filterPhotos(cat) {
+            playSfx('click');
+            selectedCategoryFilter = cat;
+            renderPhotos();
+        }
+
+        function renderPhotos() {
+            const list = appData.db?.photos || [];
+            document.getElementById('badge-photos-count').textContent = list.length;
+            document.getElementById('photos-total-count').textContent = `${list.length} КАДРОВ`;
+
+            // Filter buttons
+            const categories = ['ALL', ...new Set(list.map(p => p.category || 'ИРЛ / АРХИВ'))];
+            const filterBar = document.getElementById('photos-filter-bar');
+            filterBar.innerHTML = categories.map(c => `
+                <button onclick="filterPhotos('${c}')" class="brutal-btn px-2.5 py-0.5 text-[10px] ${
+                    selectedCategoryFilter === c ? 'bg-[#CCFF00] text-black' : 'bg-black text-neutral-300'
+                }">${c === 'ALL' ? 'ВСЕ' : c}</button>
+            `).join('');
+
+            // Grid cards
+            const grid = document.getElementById('photos-grid');
+            const filtered = selectedCategoryFilter === 'ALL' ? list : list.filter(p => (p.category || 'ИРЛ / АРХИВ') === selectedCategoryFilter);
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '<div class="col-span-full p-8 text-center text-neutral-500 font-mono">В этой категории пока нет кадров.</div>';
+                return;
+            }
+
+            grid.innerHTML = filtered.map(p => {
+                const imgSrc = p.src || p.url || '';
+                const isFile = imgSrc.startsWith('public/photos/');
+                return `
+                <div class="brutal-card overflow-hidden flex flex-col justify-between group">
+                    <div class="relative bg-black aspect-square overflow-hidden">
+                        <img src="/${imgSrc}" onerror="this.onerror=null;this.src='${p.fallback || ''}'" alt="${p.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                        <div class="absolute top-2 left-2 flex gap-1 font-mono text-[9px] font-extrabold">
+                            <span class="px-1.5 py-0.5 bg-black/80 text-[#CCFF00] border border-black">${p.category || 'АРХИВ'}</span>
+                            <span class="px-1.5 py-0.5 bg-black/80 text-white border border-black">${p.date || '2026'}</span>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <span class="px-1.5 py-0.5 text-[9px] font-mono font-bold ${isFile ? 'bg-[#00E5FF] text-black' : 'bg-neutral-700 text-white'} border border-black">
+                                ${isFile ? 'FILE' : 'B64'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="p-3 space-y-2 font-mono text-xs flex-1 flex flex-col justify-between bg-[#14161D]">
+                        <div>
+                            <div class="font-extrabold text-white truncate" title="${p.title}">${p.title}</div>
+                            <div class="text-[11px] text-neutral-400 line-clamp-2 mt-0.5">${p.desc || 'Без описания'}</div>
+                        </div>
+                        <div class="flex items-center justify-between pt-2 border-t border-[#232631]">
+                            <a href="/${imgSrc}" target="_blank" class="text-neutral-400 hover:text-[#00E5FF] text-[11px]">
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i> Открыть
+                            </a>
+                            <button onclick="handleDeletePhoto('${p.id}')" class="text-[#FF5722] hover:text-red-400 font-bold text-[11px]">
+                                <i class="fa-solid fa-trash mr-1"></i> Удалить
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+
+        // =================================================================
+        // WIKI MODULE
+        // =================================================================
+        function startNewWikiArticle() {
+            playSfx('click');
+            document.getElementById('wiki-id').value = '';
+            document.getElementById('wiki-title').value = '';
+            document.getElementById('wiki-category').value = 'ОСНОВНОЕ';
+            document.getElementById('wiki-author').value = 'pruushkaa';
+            document.getElementById('wiki-date').value = new Date().toISOString().slice(0, 7).replace('-', '.');
+            document.getElementById('wiki-tags').value = 'СРП, архив';
+            document.getElementById('wiki-content').value = '';
+            document.getElementById('wiki-editor-mode-badge').textContent = 'СОЗДАНИЕ НОВОЙ СТАТЬИ';
+            document.getElementById('wiki-article-id-badge').textContent = 'ID: NEW';
+            document.getElementById('btn-delete-wiki').classList.add('hidden');
+            updateWikiPreview();
+        }
+
+        function editWikiArticle(id) {
+            playSfx('click');
+            const article = appData.db?.wiki?.find(a => a.id === id);
+            if (!article) return;
+
+            document.getElementById('wiki-id').value = article.id;
+            document.getElementById('wiki-title').value = article.title || '';
+            document.getElementById('wiki-category').value = article.category || 'ОСНОВНОЕ';
+            document.getElementById('wiki-author').value = article.author || 'pruushkaa';
+            document.getElementById('wiki-date').value = article.updated || '2026.11';
+            document.getElementById('wiki-tags').value = Array.isArray(article.tags) ? article.tags.join(', ') : (article.tags || '');
+            document.getElementById('wiki-content').value = article.content || '';
+
+            document.getElementById('wiki-editor-mode-badge').textContent = 'РЕДАКТИРОВАНИЕ СТАТЬИ';
+            document.getElementById('wiki-article-id-badge').textContent = `ID: ${article.id}`;
+            document.getElementById('btn-delete-wiki').classList.remove('hidden');
+            updateWikiPreview();
+        }
+
+        function insertMd(prefix, suffix) {
+            const ta = document.getElementById('wiki-content');
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            const text = ta.value;
+            const selected = text.substring(start, end) || 'текст';
+            ta.value = text.substring(0, start) + prefix + selected + suffix + text.substring(end);
+            ta.focus();
+            ta.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
+            updateWikiPreview();
+        }
+
+        function updateWikiPreview() {
+            const raw = document.getElementById('wiki-content').value;
+            // Simple markdown renderer
+            let html = raw
+                .replace(/^### (.*$)/gim, '<h3 class="font-extrabold text-[#CCFF00] text-sm mt-3 mb-1">$1</h3>')
+                .replace(/^## (.*$)/gim, '<h2 class="font-extrabold text-[#00E5FF] text-base mt-4 mb-2 border-b border-[#232631] pb-1">$1</h2>')
+                .replace(/^# (.*$)/gim, '<h1 class="font-extrabold text-white text-lg mt-4 mb-2">$1</h1>')
+                .replace(/\*\*(.*?)\*\*/gim, '<strong class="text-white font-bold">$1</strong>')
+                .replace(/\*(.*?)\*/gim, '<em class="italic text-neutral-300">$1</em>')
+                .replace(/^> (.*$)/gim, '<blockquote class="border-l-2 border-[#FF5722] pl-3 py-1 bg-black/40 text-neutral-300 italic my-2">$1</blockquote>')
+                .replace(/`([^`]+)`/gim, '<code class="bg-[#232631] px-1 py-0.5 text-[#CCFF00] text-[11px] font-mono">$1</code>')
+                .replace(/\n\n/gim, '<div class="my-2"></div>')
+                .replace(/\n/gim, '<br>');
+
+            document.getElementById('wiki-preview-box').innerHTML = html || '<span class="text-neutral-600">Здесь отобразится предпросмотр статьи...</span>';
+        }
+
+        async function handleSaveWikiArticle(e) {
+            e.preventDefault();
+            playSfx('click');
+
+            const id = document.getElementById('wiki-id').value;
+            const title = document.getElementById('wiki-title').value.trim();
+            const category = document.getElementById('wiki-category').value;
+            const author = document.getElementById('wiki-author').value.trim();
+            const updated = document.getElementById('wiki-date').value.trim();
+            const tags = document.getElementById('wiki-tags').value;
+            const content = document.getElementById('wiki-content').value;
+
+            try {
+                const res = await fetch('/api/admin/wiki/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, title, category, author, updated, tags, content })
+                });
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                appData.db.wiki = data.wiki;
+                showToast('СТАТЬЯ СОХРАНЕНА!');
+                playSfx('success');
+                renderWiki();
+                refreshGitStatus();
+            } catch (err) {
+                showToast('ОШИБКА СОХРАНЕНИЯ СТАТЬИ', 'error');
+            }
+        }
+
+        async function handleDeleteCurrentWiki() {
+            const id = document.getElementById('wiki-id').value;
+            if (!id || !confirm('Точно удалить эту статью?')) return;
+            playSfx('click');
+            try {
+                const res = await fetch('/api/admin/wiki/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                appData.db.wiki = data.wiki;
+                showToast('СТАТЬЯ УДАЛЕНА');
+                startNewWikiArticle();
+                renderWiki();
+                refreshGitStatus();
+            } catch (e) {
+                showToast('ОШИБКА УДАЛЕНИЯ', 'error');
+            }
+        }
+
+        function renderWiki() {
+            const list = appData.db?.wiki || [];
+            document.getElementById('badge-wiki-count').textContent = list.length;
+            document.getElementById('wiki-count-label').textContent = `${list.length} статей`;
+
+            const container = document.getElementById('wiki-articles-list');
+            if (list.length === 0) {
+                container.innerHTML = '<div class="p-4 text-center text-neutral-500 text-xs">Статей пока нет.</div>';
+                return;
+            }
+
+            container.innerHTML = list.map(a => `
+                <div onclick="editWikiArticle('${a.id}')" class="p-3 bg-[#0A0B0E] border border-[#232631] hover:border-[#00E5FF] cursor-pointer transition-colors space-y-1">
+                    <div class="flex items-center justify-between text-[10px]">
+                        <span class="text-[#00E5FF] font-bold">${a.category || 'ОСНОВНОЕ'}</span>
+                        <span class="text-neutral-500">${a.updated || ''}</span>
+                    </div>
+                    <div class="font-bold text-white text-xs truncate">${a.title}</div>
+                    <div class="text-[10px] text-neutral-400">Автор: ${a.author || 'pruushkaa'}</div>
+                </div>
+            `).join('');
+        }
+
+
+        // =================================================================
+        // TRACKS MODULE
+        // =================================================================
+        function handleGpxDragOver(e) {
+            e.preventDefault();
+            document.getElementById('gpx-dropzone').classList.add('border-[#CCFF00]', 'bg-[#15171E]');
+        }
+        function handleGpxDragLeave(e) {
+            e.preventDefault();
+            document.getElementById('gpx-dropzone').classList.remove('border-[#CCFF00]', 'bg-[#15171E]');
+        }
+        function handleGpxDrop(e) {
+            e.preventDefault();
+            handleGpxDragLeave(e);
+            const file = e.dataTransfer?.files?.[0];
+            if (file) uploadGpxFile(file);
+        }
+        function handleGpxSelect(e) {
+            const file = e.target.files?.[0];
+            if (file) uploadGpxFile(file);
+        }
+        document.getElementById('gpx-dropzone').addEventListener('click', () => {
+            document.getElementById('gpx-file-input').click();
+        });
+
+        async function uploadGpxFile(file) {
+            if (!file.name.toLowerCase().endsWith('.gpx')) {
+                showToast('ПОЖАЛУЙСТА, ВЫБЕРИТЕ .GPX ФАЙЛ', 'warn');
+                return;
+            }
+            playSfx('click');
+            showToast(`ОБРАБОТКА ТРЕКА: ${file.name}...`);
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const gpxContent = e.target.result;
+                try {
+                    const res = await fetch('/api/admin/tracks/upload', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename: file.name, gpxContent })
+                    });
+                    if (!res.ok) throw new Error();
+                    const data = await res.json();
+                    appData.tracks = data.tracks;
+                    showToast('МАРШРУТ УСПЕШНО ДОБАВЛЕН И ПРОАНАЛИЗИРОВАН!');
+                    playSfx('success');
+                    renderTracks();
+                    refreshGitStatus();
+                } catch (err) {
+                    showToast('ОШИБКА ЗАГРУЗКИ GPX', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        async function handleDeleteTrack(filename) {
+            if (!confirm(`Удалить маршрут ${filename}?`)) return;
+            playSfx('click');
+            try {
+                const res = await fetch('/api/admin/tracks/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                appData.tracks = data.tracks;
+                showToast('ТРЕК УДАЛЕН');
+                renderTracks();
+                refreshGitStatus();
+            } catch (e) {
+                showToast('ОШИБКА ПРИ УДАЛЕНИИ ТРЕКА', 'error');
+            }
+        }
+
+        async function handleResyncTracks() {
+            playSfx('click');
+            showToast('ПЕРЕСИНХРОНИЗАЦИЯ МАНИФЕСТА...');
+            try {
+                const res = await fetch('/api/admin/tracks/resync', { method: 'POST' });
+                const data = await res.json();
+                appData.tracks = data.tracks;
+                showToast('МАНИФЕСТ ОБНОВЛЕН');
+                playSfx('success');
+                renderTracks();
+                refreshGitStatus();
+            } catch (e) {
+                showToast('ОШИБКА СИНХРОНИЗАЦИИ', 'error');
+            }
+        }
+
+        function renderTracks() {
+            const list = appData.tracks || [];
+            document.getElementById('badge-tracks-count').textContent = list.length;
+            document.getElementById('tracks-total-count').textContent = `${list.length} ТРЕКОВ`;
+
+            const container = document.getElementById('tracks-list');
+            if (list.length === 0) {
+                container.innerHTML = '<div class="p-6 text-center text-neutral-500">Маршруты пока не добавлены.</div>';
+                return;
+            }
+
+            container.innerHTML = list.map(t => {
+                const tel = t.telemetry || {};
+                const tags = Array.isArray(t.tags) ? t.tags : [];
+                return `
+                <div class="brutal-card p-4 flex flex-wrap items-center justify-between gap-3 bg-[#14161D]">
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-2">
+                            <span class="font-extrabold text-white text-sm">${t.title || 'Маршрут'}</span>
+                            <span class="text-neutral-500 text-[11px]">${t.date || ''}</span>
+                        </div>
+                        <div class="text-[11px] text-neutral-400 font-mono">${t.file || ''}</div>
+                        <div class="flex flex-wrap gap-1.5 pt-1">
+                            ${tel.distanceKm ? `<span class="px-1.5 py-0.5 bg-black text-[#CCFF00] border border-[#232631] text-[10px] font-bold"><i class="fa-solid fa-arrows-left-right mr-1"></i>${tel.distanceKm} км</span>` : ''}
+                            ${tel.elevationGainM ? `<span class="px-1.5 py-0.5 bg-black text-[#00E5FF] border border-[#232631] text-[10px] font-bold"><i class="fa-solid fa-mountain mr-1"></i>+${tel.elevationGainM} м</span>` : ''}
+                            ${tel.movingTime ? `<span class="px-1.5 py-0.5 bg-black text-[#FF5722] border border-[#232631] text-[10px] font-bold"><i class="fa-solid fa-stopwatch mr-1"></i>${tel.movingTime}</span>` : ''}
+                            ${tags.map(tag => `<span class="px-1.5 py-0.5 bg-[#232631] text-neutral-300 text-[10px]">${tag}</span>`).join('')}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        ${t.file ? `<a href="/${t.file}" download class="brutal-btn px-2.5 py-1 bg-[#232631] text-white text-[11px]"><i class="fa-solid fa-download"></i> .GPX</a>` : ''}
+                        <button onclick="handleDeleteTrack('${t.file || t.id}')" class="brutal-btn px-2.5 py-1 bg-red-950 text-red-200 border-red-800 text-[11px]">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+
+        // =================================================================
+        // GIT & DEPLOY MODULE
+        // =================================================================
+        async function refreshGitStatus() {
+            try {
+                const res = await fetch('/api/admin/git/status');
+                const data = await res.json();
+                appData.git = data;
+                renderGitStatus();
+            } catch (e) {
+                console.error('Git status error:', e);
+            }
+        }
+
+        function renderGitStatus() {
+            const git = appData.git || {};
+            const isClean = git.clean !== false && !git.statusText?.trim();
+
+            // Branch badge
+            document.getElementById('git-branch-badge').textContent = `BRANCH: ${git.branch || 'main'}`;
+
+            // Topbar quick pill
+            const statusDot = document.getElementById('git-status-dot');
+            const statusText = document.getElementById('git-status-text');
+            const changesBadge = document.getElementById('badge-git-changes');
+
+            if (isClean) {
+                statusDot.className = 'w-2 h-2 rounded-full bg-[#CCFF00]';
+                statusText.textContent = 'GIT: СИНХРОНИЗИРОВАНО';
+                changesBadge.classList.add('hidden');
+            } else {
+                statusDot.className = 'w-2 h-2 rounded-full bg-[#FF5722] animate-pulse';
+                statusText.textContent = 'GIT: ЕСТЬ ИЗМЕНЕНИЯ';
+                changesBadge.classList.remove('hidden');
+            }
+
+            // Tab view details
+            document.getElementById('git-working-tree-badge').textContent = isClean ? 'ЧИСТАЯ КОПИЯ (CLEAN)' : 'ИЗМЕНЕНИЯ НЕ ЗАФИКСИРОВАНЫ';
+            document.getElementById('git-working-tree-badge').className = `px-2 py-0.5 border font-bold ${
+                isClean ? 'bg-black text-[#CCFF00] border-[#232631]' : 'bg-[#FF5722] text-white border-black'
+            }`;
+
+            document.getElementById('git-last-commit-box').textContent = git.lastCommit || 'Нет информации о коммитах';
+
+            // Modified files list
+            const filesContainer = document.getElementById('git-modified-files-list');
+            const lines = (git.statusText || '').trim().split('\n').filter(Boolean);
+            document.getElementById('git-changes-count').textContent = `${lines.length} файлов`;
+            changesBadge.textContent = lines.length;
+
+            if (lines.length === 0) {
+                filesContainer.innerHTML = '<div class="text-neutral-500">Нет измененных файлов. Все актуально.</div>';
+            } else {
+                filesContainer.innerHTML = lines.map(l => {
+                    const code = l.substring(0, 2).trim();
+                    const file = l.substring(3).trim();
+                    return `
+                        <div class="flex items-center gap-2 truncate">
+                            <span class="font-bold ${code === 'M' ? 'text-yellow-400' : (code === '??' ? 'text-[#CCFF00]' : 'text-[#00E5FF]')}">[${code}]</span>
+                            <span class="text-neutral-200">${file}</span>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        async function handlePublishGit() {
+            playSfx('click');
+            const btn = document.getElementById('btn-publish-git');
+            const customMsg = document.getElementById('git-commit-msg').value.trim();
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ОТПРАВКА НА GITHUB (GIT PUSH)...';
+            logTerminal('Starting automated publish sequence...');
+            logTerminal('git add -A');
+
+            try {
+                const res = await fetch('/api/admin/git/publish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: customMsg })
+                });
+
+                const data = await res.json();
+                if (!res.ok || data.success === false) {
+                    throw new Error(data.error || data.stderr || 'Не удалось отправить изменения');
+                }
+
+                logTerminal(data.log || 'Push completed successfully.');
+                logTerminal('✔ DEPLOY TRIGGERED: GitHub Actions will rebuild the site in ~30s.');
+                showToast('УСПЕШНО ОПУБЛИКОВАНО НА GITHUB!');
+                playSfx('success');
+                document.getElementById('git-commit-msg').value = '';
+                refreshGitStatus();
+            } catch (err) {
+                logTerminal(`ERROR: ${err.message}`, true);
+                showToast(`ОШИБКА ДЕПЛОЯ: ${err.message}`, 'error');
+                playSfx('error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-rocket"></i> ОПУБЛИКОВАТЬ НА GITHUB (COMMIT & PUSH)';
+            }
+        }
+
+
+        // =================================================================
+        // SETTINGS MODULE
+        // =================================================================
+        function renderSettings() {
+            const db = appData.db || {};
+            document.getElementById('setting-admin-pass').value = db.adminPass || 'admin';
+            document.getElementById('setting-lastfm-user').value = db.lastFmUser || 'Pruushkaa';
+            document.getElementById('setting-lastfm-key').value = db.lastFmApiKey || '';
+            document.getElementById('setting-discord-id').value = db.discord?.discordId || db.discord?.id || '655742532772429834';
+            document.getElementById('setting-discord-status').value = db.discord?.status || 'offline';
+            document.getElementById('setting-discord-text').value = db.discord?.text || 'В сети';
+        }
+
+        async function handleSaveSettings(e) {
+            e.preventDefault();
+            playSfx('click');
+            const adminPass = document.getElementById('setting-admin-pass').value;
+            const lastFmUser = document.getElementById('setting-lastfm-user').value;
+            const lastFmApiKey = document.getElementById('setting-lastfm-key').value;
+            const discordId = document.getElementById('setting-discord-id').value;
+            const discordStatus = document.getElementById('setting-discord-status').value;
+            const discordText = document.getElementById('setting-discord-text').value;
+
+            try {
+                const res = await fetch('/api/admin/settings/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ adminPass, lastFmUser, lastFmApiKey, discordId, discordStatus, discordText })
+                });
+                if (!res.ok) throw new Error();
+                showToast('НАСТРОЙКИ СОХРАНЕНЫ!');
+                playSfx('success');
+                refreshGitStatus();
+            } catch (e) {
+                showToast('ОШИБКА СОХРАНЕНИЯ НАСТРОЕК', 'error');
+            }
+        }
+
+        function downloadDbBackup() {
+            playSfx('click');
+            const dump = JSON.stringify(appData.db, null, 2);
+            const blob = new Blob([dump], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `database_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('РЕЗЕРВНАЯ КОПИЯ СКАЧАНА');
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadAllData();
+            // Polling git status every 20 seconds
+            setInterval(refreshGitStatus, 20000);
+        });
+    </script>
+</body>
+</html>

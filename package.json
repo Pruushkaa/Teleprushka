@@ -4,6 +4,9 @@
   "description": "PRUUSHKAA // ARCHIVE_OS - Industrial Brutalist Portfolio & GPX Route Archive",
   "type": "module",
   "scripts": {
+    "admin": "node pruushkaa_archive/server.js --open-admin",
+    "start": "node pruushkaa_archive/server.js",
+    "server": "node pruushkaa_archive/server.js",
     "sync:tracks": "node scripts/sync-tracks.mjs",
     "build:og": "node scripts/generate-og.mjs",
     "generate:music": "node scripts/generate-music-summary.mjs",

@@ -1159,6 +1159,142 @@
             return false;
         };
 
+        /* ==========================================================================
+           INDEXEDDB PERMANENT STORAGE ENGINE (ДЛЯ БОЛЬШИХ ФОТО И GPX БЕЗ ЛИМИТОВ КВОТЫ)
+           ========================================================================== */
+        const IDB_DB_NAME = 'pruushkaa_permanent_storage';
+        const IDB_STORE_NAME = 'tracks_store';
+
+        const openIDB = () => new Promise((resolve) => {
+            try {
+                if (typeof indexedDB === 'undefined') return resolve(null);
+                const req = indexedDB.open(IDB_DB_NAME, 1);
+                req.onupgradeneeded = () => {
+                    req.result.createObjectStore(IDB_STORE_NAME);
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            } catch (e) {
+                resolve(null);
+            }
+        });
+
+        const saveToIDB = async (key, val) => {
+            try {
+                const db = await openIDB();
+                if (!db) return false;
+                return new Promise((resolve) => {
+                    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+                    const store = tx.objectStore(IDB_STORE_NAME);
+                    store.put(val, key);
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                });
+            } catch (e) {
+                return false;
+            }
+        };
+
+        const loadFromIDB = async (key) => {
+            try {
+                const db = await openIDB();
+                if (!db) return null;
+                return new Promise((resolve) => {
+                    const tx = db.transaction(IDB_STORE_NAME, 'readonly');
+                    const store = tx.objectStore(IDB_STORE_NAME);
+                    const req = store.get(key);
+                    req.onsuccess = () => resolve(req.result || null);
+                    req.onerror = () => resolve(null);
+                });
+            } catch (e) {
+                return null;
+            }
+        };
+
+        // Сохранение треков в IndexedDB + localStorage
+        const persistAllTracks = async (trackList) => {
+            if (!Array.isArray(trackList)) return;
+            await saveToIDB('pruushkaa_tracks_v3', trackList);
+            try {
+                localStorage.setItem('pruushkaa_tracks_user_modified', 'true');
+                localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(trackList));
+            } catch (quotaErr) {
+                console.info('LocalStorage quota reached for tracks, saved safely to IndexedDB');
+            }
+        };
+
+        // Сохранение фото в IndexedDB (без лимитов браузера) + резервная копия в localStorage
+        const persistAllPhotos = async (photoList) => {
+            if (!Array.isArray(photoList)) return;
+            try {
+                localStorage.setItem('pruushkaa_photos_user_modified', 'true');
+            } catch (e) {}
+            await saveToIDB('pruushkaa_photos_v3', photoList);
+            try {
+                localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(photoList));
+            } catch (quotaErr) {
+                console.info('LocalStorage quota reached for photos, saved safely to IndexedDB');
+            }
+        };
+
+        // Сохранение вики-статей в IndexedDB + localStorage
+        const persistAllWiki = async (wikiList) => {
+            if (!Array.isArray(wikiList)) return;
+            try {
+                localStorage.setItem('pruushkaa_wiki_user_modified', 'true');
+            } catch (e) {}
+            await saveToIDB('pruushkaa_wiki_v3', wikiList);
+            try {
+                localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(wikiList));
+            } catch (quotaErr) {
+                console.info('LocalStorage quota reached for wiki, saved safely to IndexedDB');
+            }
+        };
+
+        // Интеллектуальное сжатие загружаемых снимков (макс 1920px, JPEG 0.85) для ускорения галереи и экономии памяти
+        const compressImageFile = (file, maxWidth = 1920, maxHeight = 1920, quality = 0.85) => {
+            return new Promise((resolve) => {
+                if (!file || !file.type || !file.type.startsWith('image/')) {
+                    const r = new FileReader();
+                    r.onload = (e) => resolve(e.target.result);
+                    r.onerror = () => resolve(null);
+                    r.readAsDataURL(file);
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        let { width, height } = img;
+                        if (width > maxWidth || height > maxHeight) {
+                            if (width / maxWidth > height / maxHeight) {
+                                height = Math.round((height * maxWidth) / width);
+                                width = maxWidth;
+                            } else {
+                                width = Math.round((width * maxHeight) / height);
+                                height = maxHeight;
+                            }
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        try {
+                            const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                            resolve(dataUrl);
+                        } catch (err) {
+                            resolve(e.target.result);
+                        }
+                    };
+                    img.onerror = () => resolve(e.target.result);
+                    img.src = e.target.result;
+                };
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(file);
+            });
+        };
+
         const INITIAL_PHOTOS = [
             {
                 id: "IMG-01",
@@ -1189,10 +1325,11 @@
             }
         ];
 
-        const PhotoArchive = ({ photos, setPhotos, notify, syncDatabase, isAdmin, onOpenAdmin }) => {
+        const PhotoArchive = ({ photos, setPhotos, notify, syncDatabase, isAdmin, onOpenAdmin, onExportDatabase, onResetToServer }) => {
             const [selectedCategory, setSelectedCategory] = useState('ВСЕ');
             const [lightboxItem, setLightboxItem] = useState(null);
             const [isAdding, setIsAdding] = useState(false);
+            const [isCompressing, setIsCompressing] = useState(false);
             const [newTitle, setNewTitle] = useState('');
             const [newCategory, setNewCategory] = useState('ИРЛ / АРХИВ');
             const [newDesc, setNewDesc] = useState('');
@@ -1200,33 +1337,43 @@
 
             const categories = ['ВСЕ', 'ИРЛ / АРХИВ', 'СРП / ХРОНИКА', 'СКРИНШОТЫ'];
 
+            const isPhotosModified = localStorage.getItem('pruushkaa_photos_user_modified') === 'true';
+
             const filteredPhotos = useMemo(() => {
                 if (selectedCategory === 'ВСЕ') return photos;
                 return photos.filter(p => (p.category || 'ИРЛ / АРХИВ') === selectedCategory);
             }, [photos, selectedCategory]);
 
-            const handleFileUpload = (e) => {
+            const handleFileUpload = async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    setNewSrc(ev.target.result);
-                    if (!newTitle) {
-                        setNewTitle(file.name.replace(/\.[^/.]+$/, "").toUpperCase());
+                setIsCompressing(true);
+                try {
+                    const compressed = await compressImageFile(file, 1920, 1920, 0.85);
+                    if (compressed) {
+                        setNewSrc(compressed);
+                        if (!newTitle) {
+                            setNewTitle(file.name.replace(/\.[^/.]+$/, "").toUpperCase());
+                        }
+                        notify("ФАЙЛ ОПТИМИЗИРОВАН И ГОТОВ К СОХРАНЕНИЮ");
+                    } else {
+                        notify("НЕ УДАЛОСЬ ПРОЧИТАТЬ ФАЙЛ", "warn");
                     }
-                    notify("ФАЙЛ ЗАГРУЖЕН В БУФЕР ФОРМЫ");
-                };
-                reader.readAsDataURL(file);
+                } catch (err) {
+                    notify("ОШИБКА ПРИ ОБРАБОТКЕ ИЗОБРАЖЕНИЯ", "warn");
+                } finally {
+                    setIsCompressing(false);
+                }
             };
 
-            const handleAddPhoto = (e) => {
+            const handleAddPhoto = async (e) => {
                 e.preventDefault();
                 if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ДОСТУП ЗАПРЕЩЕН: ТРЕБУЕТСЯ ПАРОЛЬ АДМИНА")) return;
                 if (!newSrc.trim() || !newTitle.trim()) {
                     notify("УКАЖИ НАЗВАНИЕ И ВЫБЕРИ ФАЙЛ ИЛИ URL", "warn");
                     return;
                 }
-                const nextId = `IMG-0${photos.length + 1}`;
+                const nextId = uniqueId('IMG');
                 const today = new Date().toISOString().slice(0, 7).replace('-', '.');
                 const created = {
                     id: nextId,
@@ -1240,6 +1387,7 @@
                 };
                 const updated = [created, ...photos];
                 setPhotos(updated);
+                await persistAllPhotos(updated);
                 syncDatabase(updated, null, null);
                 sfx.playSuccess();
                 triggerGlitchSpike(1.2);
@@ -1247,17 +1395,18 @@
                 setNewDesc('');
                 setNewSrc('');
                 setIsAdding(false);
-                notify(`КАДР ${nextId} СОХРАНЕН НА СЕРВЕР`);
+                notify(`КАДР ${newTitle.trim()} СОХРАНЕН!`);
             };
 
-            const handleDeletePhoto = (id) => {
+            const handleDeletePhoto = async (id) => {
                 if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ТОЛЬКО АДМИНИСТРАТОР МОЖЕТ УДАЛЯТЬ КАДРЫ")) return;
                 sfx.playClick();
                 const updated = photos.filter(p => p.id !== id);
                 setPhotos(updated);
+                await persistAllPhotos(updated);
                 syncDatabase(updated, null, null);
                 setLightboxItem(null);
-                notify(`КАДР ${id} УДАЛЕН С СЕРВЕРА`);
+                notify(`КАДР ${id} УДАЛЕН`);
             };
 
             return (
@@ -1276,20 +1425,51 @@
                             <span className="px-2 py-1 bg-[#F4F0EA] border-2 border-black font-bold">
                                 КАДРОВ: {filteredPhotos.length}
                             </span>
+                            {isPhotosModified && (
+                                <div className="flex items-center gap-1">
+                                    <span className="px-1.5 py-0.5 bg-[#FF5722] text-white font-mono text-[10px] font-bold" title="В браузере сохранены новые добавленные кадры">
+                                        LOCAL
+                                    </span>
+                                    {isAdmin && onResetToServer && (
+                                        <button
+                                            type="button"
+                                            onClick={onResetToServer}
+                                            className="brutal-btn px-2 py-0.5 bg-neutral-200 text-neutral-800 text-[10px] font-bold uppercase hover:bg-red-500 hover:text-white"
+                                            title="Очистить локальный кэш и вернуть кадры из файла database.json"
+                                        >
+                                            СБРОС К ФАЙЛУ
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                             {isAdmin ? (
-                                <button
-                                    onClick={() => {
-                                        sfx.playClick();
-                                        setIsAdding(!isAdding);
-                                    }}
-                                    onMouseEnter={() => sfx.playHover()}
-                                    className={`brutal-btn px-3 py-1 font-extrabold uppercase flex items-center gap-1.5 ${
-                                        isAdding ? 'bg-[#FF5722] text-white' : 'bg-[#CCFF00] text-black'
-                                    }`}
-                                >
-                                    <i className={`fa-solid ${isAdding ? 'fa-xmark' : 'fa-camera-retro'}`}></i>
-                                    {isAdding ? 'ЗАКРЫТЬ ФОРМУ' : '+ ДОБАВИТЬ КАДР'}
-                                </button>
+                                <>
+                                    <button
+                                        onClick={() => {
+                                            sfx.playClick();
+                                            setIsAdding(!isAdding);
+                                        }}
+                                        onMouseEnter={() => sfx.playHover()}
+                                        className={`brutal-btn px-3 py-1 font-extrabold uppercase flex items-center gap-1.5 ${
+                                            isAdding ? 'bg-[#FF5722] text-white' : 'bg-[#CCFF00] text-black'
+                                        }`}
+                                    >
+                                        <i className={`fa-solid ${isAdding ? 'fa-xmark' : 'fa-camera-retro'}`}></i>
+                                        {isAdding ? 'ЗАКРЫТЬ ФОРМУ' : '+ ДОБАВИТЬ КАДР'}
+                                    </button>
+                                    {onExportDatabase && (
+                                        <button
+                                            type="button"
+                                            onClick={onExportDatabase}
+                                            onMouseEnter={() => sfx.playHover()}
+                                            className="brutal-btn px-2.5 py-1 bg-[#00E5FF] text-black font-bold uppercase flex items-center gap-1.5"
+                                            title="Скачать актуальный database.json со всеми добавленными фотографиями для коммита на GitHub"
+                                        >
+                                            <i className="fa-solid fa-file-export"></i>
+                                            <span className="hidden sm:inline">ЭКСПОРТ DB.JSON</span>
+                                        </button>
+                                    )}
+                                </>
                             ) : (
                                 <button
                                     onClick={() => {
@@ -1330,8 +1510,15 @@
                             onSubmit={handleAddPhoto}
                             className="mb-5 p-4 bg-[#F4F0EA] border-3 border-black shadow-[4px_4px_0px_#000] space-y-3 font-mono text-xs"
                         >
-                            <div className="font-extrabold uppercase text-sm border-b-2 border-black pb-1">
-                                ЗАГРУЗКА НОВОГО СНИМКА В БАЗУ
+                            <div className="flex items-center justify-between border-b-2 border-black pb-1">
+                                <span className="font-extrabold uppercase text-sm">
+                                    ЗАГРУЗКА НОВОГО СНИМКА В БАЗУ
+                                </span>
+                                {isCompressing && (
+                                    <span className="text-[#FF5722] font-bold animate-pulse text-[11px]">
+                                        <i className="fa-solid fa-spinner fa-spin mr-1"></i> ОПТИМИЗАЦИЯ СНИМКА...
+                                    </span>
+                                )}
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
@@ -1360,12 +1547,15 @@
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
-                                    <label className="font-bold block mb-1">ФАЙЛ С ПК (КОНВЕРТАЦИЯ В B64):</label>
+                                    <label className="font-bold block mb-1">
+                                        ФАЙЛ С ПК (АВТОСЖАТИЕ В B64):
+                                    </label>
                                     <input
                                         type="file"
                                         accept="image/*"
+                                        disabled={isCompressing}
                                         onChange={handleFileUpload}
-                                        className="w-full p-1.5 border-2 border-black bg-white font-bold"
+                                        className="w-full p-1.5 border-2 border-black bg-white font-bold disabled:opacity-50"
                                     />
                                 </div>
                                 <div>
@@ -1394,9 +1584,11 @@
                             <div className="flex justify-end gap-2">
                                 <button
                                     type="submit"
-                                    className="brutal-btn px-5 py-2 bg-[#FF5722] text-white font-extrabold uppercase"
+                                    disabled={isCompressing}
+                                    className="brutal-btn px-5 py-2 bg-[#FF5722] text-white font-extrabold uppercase disabled:opacity-50"
                                 >
-                                    <i className="fa-solid fa-floppy-disk mr-1.5"></i> СОХРАНИТЬ В ФОТОАРХИВ
+                                    <i className="fa-solid fa-floppy-disk mr-1.5"></i>
+                                    {isCompressing ? 'ОБРАБОТКА...' : 'СОХРАНИТЬ В ФОТОАРХИВ'}
                                 </button>
                             </div>
                         </form>
@@ -2530,58 +2722,6 @@
             );
         };
 
-        /* ==========================================================================
-           INDEXEDDB PERMANENT STORAGE ENGINE (UNLIMITED STORAGE FOR BIG GPX TRACKS)
-           ========================================================================== */
-        const IDB_DB_NAME = 'pruushkaa_permanent_storage';
-        const IDB_STORE_NAME = 'tracks_store';
-
-        const openIDB = () => new Promise((resolve) => {
-            try {
-                if (typeof indexedDB === 'undefined') return resolve(null);
-                const req = indexedDB.open(IDB_DB_NAME, 1);
-                req.onupgradeneeded = () => {
-                    req.result.createObjectStore(IDB_STORE_NAME);
-                };
-                req.onsuccess = () => resolve(req.result);
-                req.onerror = () => resolve(null);
-            } catch (e) {
-                resolve(null);
-            }
-        });
-
-        const saveToIDB = async (key, val) => {
-            try {
-                const db = await openIDB();
-                if (!db) return false;
-                return new Promise((resolve) => {
-                    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
-                    const store = tx.objectStore(IDB_STORE_NAME);
-                    store.put(val, key);
-                    tx.oncomplete = () => resolve(true);
-                    tx.onerror = () => resolve(false);
-                });
-            } catch (e) {
-                return false;
-            }
-        };
-
-        const loadFromIDB = async (key) => {
-            try {
-                const db = await openIDB();
-                if (!db) return null;
-                return new Promise((resolve) => {
-                    const tx = db.transaction(IDB_STORE_NAME, 'readonly');
-                    const store = tx.objectStore(IDB_STORE_NAME);
-                    const req = store.get(key);
-                    req.onsuccess = () => resolve(req.result || null);
-                    req.onerror = () => resolve(null);
-                });
-            } catch (e) {
-                return null;
-            }
-        };
-
         // Где искать манифест маршрутов (первый — основной, его пишет scripts/sync-tracks.mjs)
         const TRACK_MANIFEST_URLS = [
             './public/tracks/manifest.json',
@@ -2592,19 +2732,6 @@
             'tracks.json',
             './public/tracks.json'
         ];
-
-        const persistAllTracks = async (trackList) => {
-            if (!Array.isArray(trackList)) return;
-            // 1. IndexedDB - handles unlimited gigabytes of GPX XML without QuotaExceededError
-            await saveToIDB('pruushkaa_tracks_v3', trackList);
-            // 2. LocalStorage backup (safely handled if quota is reached)
-            try {
-                localStorage.setItem('pruushkaa_tracks_user_modified', 'true');
-                localStorage.setItem('pruushkaa_tracks_v2', JSON.stringify(trackList));
-            } catch (quotaErr) {
-                console.info('LocalStorage quota reached, saved safely to IndexedDB');
-            }
-        };
 
         /* ==========================================================================
            GPX ROUTE ARCHIVE & INTERACTIVE MAP MODULE (LEAFLET + LEAFLET-GPX)
@@ -4049,30 +4176,72 @@
             useEffect(() => {
                 let isMounted = true;
 
+                // 1. Асинхронная загрузка из IndexedDB (полная сохранность фото/вики/треков без лимита localStorage)
+                loadFromIDB('pruushkaa_photos_v3').then((idbPhotos) => {
+                    if (isMounted && Array.isArray(idbPhotos) && idbPhotos.length > 0) {
+                        setPhotos(normalizePhotos(idbPhotos));
+                    }
+                }).catch(() => {});
+
+                loadFromIDB('pruushkaa_wiki_v3').then((idbWiki) => {
+                    if (isMounted && Array.isArray(idbWiki) && idbWiki.length > 0) {
+                        setWikiArticles(normalizeWiki(idbWiki));
+                    }
+                }).catch(() => {});
+
+                loadFromIDB('pruushkaa_tracks_v3').then((idbTracks) => {
+                    if (isMounted && Array.isArray(idbTracks) && idbTracks.length > 0) {
+                        setTracks(idbTracks);
+                    }
+                }).catch(() => {});
+
                 const loadServerDatabase = async () => {
                     if (window.location.protocol === 'file:') return;
                     const bust = `t=${Date.now()}`;
-                    const data = await fetchFirstJson(
-                        [`./database.json?${bust}`, `database.json?${bust}`, `/api/data?${bust}`, `/database.json?${bust}`],
-                        { init: { cache: 'no-store', headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' } }, accept: Boolean }
-                    );
-                    if (!data || !isMounted) return;
-                    if (Array.isArray(data.photos)) {
-                        const normalized = normalizePhotos(data.photos);
-                        setPhotos(normalized);
-                        try { localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(normalized)); } catch (e) {}
+                    const candidateUrls = [
+                        `/api/data?${bust}`,
+                        `./database.json?${bust}`,
+                        `database.json?${bust}`,
+                        `/database.json?${bust}`
+                    ];
+                    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                        if (window.location.port !== '3001') {
+                            candidateUrls.unshift(`http://localhost:3001/api/data?${bust}`);
+                        }
                     }
+
+                    const data = await fetchFirstJson(candidateUrls, {
+                        init: { cache: 'no-store', headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' } },
+                        accept: Boolean
+                    });
+                    if (!data || !isMounted) return;
+
+                    // Photos: если пользователь добавлял/удалял фото локально, не затираем их устаревшим database.json
+                    if (Array.isArray(data.photos) && data.photos.length > 0) {
+                        const isPhotosModified = localStorage.getItem('pruushkaa_photos_user_modified') === 'true';
+                        if (!isPhotosModified) {
+                            const normalized = normalizePhotos(data.photos);
+                            setPhotos(normalized);
+                            persistAllPhotos(normalized);
+                        }
+                    }
+
+                    // Wiki: если пользователь редактировал wiki локально, не затираем их
                     const serverWiki = Array.isArray(data.wiki)
                         ? data.wiki
                         : (Array.isArray(data.articles) ? data.articles : null);
-                    if (serverWiki) {
-                        const normalizedW = normalizeWiki(serverWiki);
-                        setWikiArticles(normalizedW);
-                        try { localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(normalizedW)); } catch (e) {}
+                    if (serverWiki && serverWiki.length > 0) {
+                        const isWikiModified = localStorage.getItem('pruushkaa_wiki_user_modified') === 'true';
+                        if (!isWikiModified) {
+                            const normalizedW = normalizeWiki(serverWiki);
+                            setWikiArticles(normalizedW);
+                            persistAllWiki(normalizedW);
+                        }
                     }
+
                     if (Array.isArray(data.tracks) && data.tracks.length > 0) {
-                        const isUserModified = localStorage.getItem('pruushkaa_tracks_user_modified') === 'true';
-                        if (!isUserModified) {
+                        const isTracksModified = localStorage.getItem('pruushkaa_tracks_user_modified') === 'true';
+                        if (!isTracksModified) {
                             setTracks(data.tracks);
                             persistAllTracks(data.tracks);
                         }
@@ -4141,10 +4310,18 @@
                 const keyToSave = customPayload?.lastFmApiKey !== undefined ? customPayload.lastFmApiKey : lastFmApiKey;
                 const userToSave = customPayload?.lastFmUser || lastFmUser;
 
+                // 1. Немедленно и надёжно сохраняем в IndexedDB и LocalStorage браузера
+                if (nextPhotos !== null && nextPhotos !== undefined) {
+                    await persistAllPhotos(pToSave);
+                }
+                if (nextWiki !== null && nextWiki !== undefined) {
+                    await persistAllWiki(wToSave);
+                }
+                if (nextTracks !== null && nextTracks !== undefined) {
+                    await persistAllTracks(tToSave);
+                }
+
                 try {
-                    localStorage.setItem('pruushkaa_photos_v2', JSON.stringify(pToSave));
-                    localStorage.setItem('pruushkaa_wiki_v2', JSON.stringify(wToSave));
-                    // Manifest is stored statically in public/tracks/manifest.json
                     localStorage.setItem('pruushkaa_admin_pass', passToSave);
                     if (keyToSave && keyToSave !== 'ВАШ_LASTFM_API_KEY') {
                         localStorage.setItem('pruushkaa_lastfm_key', keyToSave);
@@ -4155,50 +4332,85 @@
                 } catch (e) {}
 
                 if (window.location.protocol === 'file:') {
-                    notify("ВНИМАНИЕ: ОТКРЫТ ЛОКАЛЬНЫЙ ФАЙЛ (FILE://). СОХРАНЕНО В БРАУЗЕРЕ.", "info");
+                    notify("СОХРАНЕНО В БРАУЗЕРЕ (FILE://). ДЛЯ GITHUB НАЖМИТЕ «ЭКСПОРТ DB.JSON»", "info");
                     return;
                 }
 
-                try {
-                    const res = await fetch(`/api/data?t=${Date.now()}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'x-admin-password': authPassToSend
-                        },
-                        body: JSON.stringify({
-                            authPass: authPassToSend,
-                            password: authPassToSend,
-                            adminPass: passToSave,
-                            lastFmApiKey: keyToSave,
-                            lastFmUser: userToSave,
-                            photos: pToSave,
-                            wiki: wToSave,
-                            articles: wToSave,
-                            tracks: tToSave,
-                            discord: discObj,
-                            discordStatus: discObj.text
-                        })
-                    });
-
-                    if (res.ok) {
-                        notify("СОХРАНЕНО В DATABASE.JSON НА СЕРВЕРЕ (ДЛЯ ВСЕХ УСТРОЙСТВ)!");
-                    } else {
-                        const errData = await res.json().catch(() => ({}));
-                        if (res.status === 404 || res.status === 405) {
-                            notify("СОХРАНЕНО В БРАУЗЕРЕ (LOCALSTORAGE). ДЛЯ ВСЕХ: СКАЧАЙТЕ TRACKS.JSON И СДЕЛАЙТЕ GIT PUSH", "info");
-                        } else {
-                            notify(`ОШИБКА СЕРВЕРА (${res.status}): ${errData.error || 'ПРОВЕРЬТЕ СЕРВЕР'}`, "warn");
-                        }
-                    }
-                } catch (e) {
-                    if (window.location.hostname.includes('github.io') || !window.location.port) {
-                        notify("СОХРАНЕНО В БРАУЗЕРЕ (ДЛЯ ПУБЛИКАЦИИ ВСЕМ: СКАЧАЙТЕ TRACKS.JSON И СДЕЛАЙТЕ GIT PUSH)", "info");
-                    } else {
-                        notify("СОХРАНЕНО В БРАУЗЕРЕ (ЛОКАЛЬНЫЙ БЭКЕНД НЕ ЗАПУЩЕН)", "info");
+                // 2. Пытаемся синхронизировать с бэкендом (относительный адрес и порт :3001)
+                const postUrls = ['/api/data'];
+                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                    if (window.location.port !== '3001') {
+                        postUrls.push('http://localhost:3001/api/data', 'http://127.0.0.1:3001/api/data');
                     }
                 }
+
+                let serverSaved = false;
+                const payload = JSON.stringify({
+                    authPass: authPassToSend,
+                    password: authPassToSend,
+                    adminPass: passToSave,
+                    lastFmApiKey: keyToSave,
+                    lastFmUser: userToSave,
+                    photos: pToSave,
+                    wiki: wToSave,
+                    articles: wToSave,
+                    tracks: tToSave,
+                    discord: discObj,
+                    discordStatus: discObj.text
+                });
+
+                for (const url of postUrls) {
+                    try {
+                        const res = await fetch(`${url}?t=${Date.now()}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'x-admin-password': authPassToSend
+                            },
+                            body: payload
+                        });
+                        if (res.ok) {
+                            serverSaved = true;
+                            try {
+                                localStorage.removeItem('pruushkaa_photos_user_modified');
+                                localStorage.removeItem('pruushkaa_wiki_user_modified');
+                            } catch (e) {}
+                            notify("СОХРАНЕНО В DATABASE.JSON НА СЕРВЕРЕ (ДЛЯ ВСЕХ УСТРОЙСТВ)!");
+                            break;
+                        }
+                    } catch (netErr) {}
+                }
+
+                if (!serverSaved) {
+                    notify("СОХРАНЕНО В БРАУЗЕРЕ (INDEXEDDB). ДЛЯ ПУБЛИКАЦИИ НА GITHUB: НАЖМИТЕ «ЭКСПОРТ DB.JSON» И СДЕЛАЙТЕ GIT PUSH", "info");
+                }
             }, [photos, wikiArticles, discordStatus, discordText, discordId, isAdmin, adminPass, lastFmApiKey, lastFmUser, notify, tracks]);
+
+            const handleExportDatabase = useCallback(() => {
+                sfx.playSuccess();
+                const dump = JSON.stringify({
+                    adminPass,
+                    lastFmApiKey,
+                    lastFmUser,
+                    discord: { status: discordStatus, text: discordText, discordId },
+                    photos,
+                    wiki: wikiArticles,
+                    tracks
+                }, null, 2);
+                downloadFile(dump, 'database.json', 'application/json');
+                notify("DATABASE.JSON ВЫГРУЖЕН! ЗАМЕНИТЕ В КОРНЕ ПРОЕКТА И СДЕЛАЙТЕ GIT PUSH");
+            }, [adminPass, lastFmApiKey, lastFmUser, discordStatus, discordText, discordId, photos, wikiArticles, tracks, notify]);
+
+            const handleResetToServerPhotos = useCallback(async () => {
+                if (!window.confirm("Сбросить локальные фотографии и загрузить кадры из исходного database.json?")) return;
+                try {
+                    localStorage.removeItem('pruushkaa_photos_user_modified');
+                    localStorage.removeItem('pruushkaa_photos_v2');
+                    await saveToIDB('pruushkaa_photos_v3', null);
+                } catch (e) {}
+                notify("ЛОКАЛЬНЫЙ КЭШ ФОТО ОЧИЩЕН, ПЕРЕЗАГРУЗКА...");
+                setTimeout(() => window.location.reload(), 400);
+            }, [notify]);
 
 
             useEffect(() => {
@@ -4506,20 +4718,7 @@
                         </div>
 
                         <button
-                            onClick={() => {
-                                sfx.playSuccess();
-                                const dump = JSON.stringify({
-                                    adminPass,
-                                    lastFmApiKey,
-                                    lastFmUser,
-                                    discord: { status: discordStatus, text: discordText, discordId },
-                                    photos,
-                                    wiki: wikiArticles,
-                                    tracks
-                                }, null, 2);
-                                downloadFile(dump, 'database.json', 'application/json');
-                                notify("ПОЛНАЯ БАЗА DATABASE.JSON ВЫГРУЖЕНА!");
-                            }}
+                            onClick={handleExportDatabase}
                             onMouseEnter={() => sfx.playHover()}
                             className="brutal-btn bg-[#CCFF00] text-black px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5"
                             title="Скачать резервную копию database.json"
@@ -4918,6 +5117,8 @@
                                 syncDatabase={syncDatabase}
                                 isAdmin={isAdmin}
                                 onOpenAdmin={() => setAdminModalOpen(true)}
+                                onExportDatabase={handleExportDatabase}
+                                onResetToServer={handleResetToServerPhotos}
                             />
                         </div>
                     )}
