@@ -1597,9 +1597,9 @@
         };
 
         // ==========================================
-        // 11. ADMIN MODAL COMPONENT
+        // 11. SETTINGS MODAL COMPONENT
         // ==========================================
-        const AdminModal = ({ isOpen, onClose, onSave, currentApiKey, currentUser }) => {
+        const SettingsModal = ({ isOpen, onClose, onSave, currentApiKey, currentUser }) => {
             const [key, setKey] = useState(currentApiKey || '');
             const [user, setUser] = useState(currentUser || 'Pruushkaa');
 
@@ -1610,7 +1610,7 @@
                     <div className="brutal-card p-6 bg-white text-black max-w-md w-full relative">
                         <div className="flex items-center justify-between border-b-2 border-black pb-3 mb-4">
                             <h3 className="font-extrabold text-base uppercase">
-                                НАСТРОЙКА LAST.FM API // ROOT
+                                НАСТРОЙКА LAST.FM API // SETTINGS
                             </h3>
                             <button
                                 onClick={onClose}
@@ -1754,7 +1754,7 @@
                 }
             });
             const [cmdOpen, setCmdOpen] = useState(false);
-            const [adminOpen, setAdminOpen] = useState(false);
+            const [settingsOpen, setSettingsOpen] = useState(false);
 
             // Data State
             const [summaryData, setSummaryData] = useState(() => {
@@ -2158,7 +2158,7 @@
                                 <button
                                     onClick={() => {
                                         sfx.playClick();
-                                        setAdminOpen(true);
+                                        setSettingsOpen(true);
                                     }}
                                     className="brutal-btn bg-[#FF5722] text-white px-3 py-1.5 font-bold flex items-center gap-1.5"
                                     title="Настройка Last.fm API ключа"
@@ -2373,9 +2373,9 @@
                     </div>
 
                     {/* Modals */}
-                    <AdminModal
-                        isOpen={adminOpen}
-                        onClose={() => setAdminOpen(false)}
+                    <SettingsModal
+                        isOpen={settingsOpen}
+                        onClose={() => setSettingsOpen(false)}
                         onSave={(key, user) => {
                             setLastFmApiKey(key);
                             setLastFmUser(user);

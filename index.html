@@ -138,7 +138,7 @@
             return 'electronic';
         }
 
-        const LastFmWidget = ({ notify, lastFmApiKey, lastFmUser, isAdmin, onOpenAdmin }) => {
+        const LastFmWidget = ({ notify, lastFmApiKey, lastFmUser }) => {
             const [tracks, setTracks] = useState(FALLBACK_TRACKS);
             const [activeIdx, setActiveIdx] = useState(0);
             const [showHistory, setShowHistory] = useState(false);
@@ -319,12 +319,8 @@
                             <span className="font-mono font-extrabold text-xs tracking-wider uppercase bg-white px-2 py-0.5 border-2 border-black">
                                 LAST.FM // @{cleanUser}
                             </span>
-                            <button
-                                onClick={() => {
-                                    sfx.playClick();
-                                    onOpenAdmin();
-                                }}
-                                className={`font-mono text-[10px] font-extrabold uppercase px-2 py-0.5 border-2 border-black cursor-pointer transition-transform active:translate-y-0.5 ${
+                            <span
+                                className={`font-mono text-[10px] font-extrabold uppercase px-2 py-0.5 border-2 border-black ${
                                     apiStatus === 'LIVE'
                                         ? 'bg-[#CCFF00] text-black'
                                         : apiStatus === 'OFFLINE'
@@ -333,16 +329,15 @@
                                         ? 'bg-amber-300 text-black'
                                         : 'bg-red-500 text-white'
                                 }`}
-                                title="Настроить API-ключ Last.fm"
                             >
                                 {apiStatus === 'LIVE'
                                     ? '● LAST.FM: LIVE'
                                     : apiStatus === 'CONFIG_REQUIRED'
-                                    ? '⚙ Требуется настройка API'
+                                    ? '⚙ API STANDBY'
                                     : apiStatus === 'OFFLINE'
                                     ? '■ LAST.FM: ПОСЛЕДНИЙ ТРЕК'
                                     : '▲ ОШИБКА API'}
-                            </button>
+                            </span>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -564,7 +559,7 @@
             );
         };
 
-        const DiscordWidget = ({ discordId, discordTag, isAdmin, onOpenAdmin, notify }) => {
+        const DiscordWidget = ({ discordId, discordTag, notify }) => {
             const [status, setStatus] = useState('offline');
             const [customText, setCustomText] = useState(CONFIG.DEFAULT_DISCORD_TEXT || 'Автономный режим');
             const [activity, setActivity] = useState(null);
@@ -690,18 +685,6 @@
                                     <span className="text-[9px] bg-white text-black font-mono font-bold px-1.5 py-0.5 border border-black" title="Автономный режим">
                                         {cleanId ? 'STANDBY' : 'NO ID'}
                                     </span>
-                                )}
-                                {isAdmin && (
-                                    <button
-                                        onClick={() => {
-                                            sfx.playClick();
-                                            onOpenAdmin();
-                                        }}
-                                        className="bg-black text-[#CCFF00] px-1.5 py-0.5 font-mono text-[10px] font-bold border border-black hover:bg-[#FF5722] hover:text-white"
-                                        title="Настроить Discord ID"
-                                    >
-                                        <i className="fa-solid fa-pen"></i>
-                                    </button>
                                 )}
                                 <i className="fa-brands fa-discord text-2xl"></i>
                             </div>
@@ -1151,13 +1134,6 @@
         // Уникальный id вида "<prefix>-<время>-<5 случайных символов>"
         const uniqueId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-        // Не админ → предупреждение + окно входа, возвращает false
-        const requireAdmin = ({ isAdmin, notify, onOpenAdmin }, message) => {
-            if (isAdmin) return true;
-            notify(message, "warn");
-            onOpenAdmin();
-            return false;
-        };
 
         /* ==========================================================================
            INDEXEDDB PERMANENT STORAGE ENGINE (ДЛЯ БОЛЬШИХ ФОТО И GPX БЕЗ ЛИМИТОВ КВОТЫ)
@@ -1325,89 +1301,17 @@
             }
         ];
 
-        const PhotoArchive = ({ photos, setPhotos, notify, syncDatabase, isAdmin, onOpenAdmin, onExportDatabase, onResetToServer }) => {
+        const PhotoArchive = ({ photos }) => {
             const [selectedCategory, setSelectedCategory] = useState('ВСЕ');
             const [lightboxItem, setLightboxItem] = useState(null);
-            const [isAdding, setIsAdding] = useState(false);
-            const [isCompressing, setIsCompressing] = useState(false);
-            const [newTitle, setNewTitle] = useState('');
-            const [newCategory, setNewCategory] = useState('ИРЛ / АРХИВ');
-            const [newDesc, setNewDesc] = useState('');
-            const [newSrc, setNewSrc] = useState('');
 
             const categories = ['ВСЕ', 'ИРЛ / АРХИВ', 'СРП / ХРОНИКА', 'СКРИНШОТЫ'];
 
-            const isPhotosModified = localStorage.getItem('pruushkaa_photos_user_modified') === 'true';
-
             const filteredPhotos = useMemo(() => {
-                if (selectedCategory === 'ВСЕ') return photos;
-                return photos.filter(p => (p.category || 'ИРЛ / АРХИВ') === selectedCategory);
+                const list = photos || [];
+                if (selectedCategory === 'ВСЕ') return list;
+                return list.filter(p => (p.category || 'ИРЛ / АРХИВ') === selectedCategory);
             }, [photos, selectedCategory]);
-
-            const handleFileUpload = async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setIsCompressing(true);
-                try {
-                    const compressed = await compressImageFile(file, 1920, 1920, 0.85);
-                    if (compressed) {
-                        setNewSrc(compressed);
-                        if (!newTitle) {
-                            setNewTitle(file.name.replace(/\.[^/.]+$/, "").toUpperCase());
-                        }
-                        notify("ФАЙЛ ОПТИМИЗИРОВАН И ГОТОВ К СОХРАНЕНИЮ");
-                    } else {
-                        notify("НЕ УДАЛОСЬ ПРОЧИТАТЬ ФАЙЛ", "warn");
-                    }
-                } catch (err) {
-                    notify("ОШИБКА ПРИ ОБРАБОТКЕ ИЗОБРАЖЕНИЯ", "warn");
-                } finally {
-                    setIsCompressing(false);
-                }
-            };
-
-            const handleAddPhoto = async (e) => {
-                e.preventDefault();
-                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ДОСТУП ЗАПРЕЩЕН: ТРЕБУЕТСЯ ПАРОЛЬ АДМИНА")) return;
-                if (!newSrc.trim() || !newTitle.trim()) {
-                    notify("УКАЖИ НАЗВАНИЕ И ВЫБЕРИ ФАЙЛ ИЛИ URL", "warn");
-                    return;
-                }
-                const nextId = uniqueId('IMG');
-                const today = new Date().toISOString().slice(0, 7).replace('-', '.');
-                const created = {
-                    id: nextId,
-                    title: newTitle.trim(),
-                    category: newCategory,
-                    date: today,
-                    src: newSrc.trim(),
-                    url: newSrc.trim(),
-                    fallback: "https://placehold.co/600x600/121212/CCFF00?text=NEW+FRAME",
-                    desc: newDesc.trim() || "Добавлено через терминал фотоархива."
-                };
-                const updated = [created, ...photos];
-                setPhotos(updated);
-                await persistAllPhotos(updated);
-                syncDatabase(updated, null, null);
-                sfx.playSuccess();
-                triggerGlitchSpike(1.2);
-                setNewTitle('');
-                setNewDesc('');
-                setNewSrc('');
-                setIsAdding(false);
-                notify(`КАДР ${newTitle.trim()} СОХРАНЕН!`);
-            };
-
-            const handleDeletePhoto = async (id) => {
-                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ТОЛЬКО АДМИНИСТРАТОР МОЖЕТ УДАЛЯТЬ КАДРЫ")) return;
-                sfx.playClick();
-                const updated = photos.filter(p => p.id !== id);
-                setPhotos(updated);
-                await persistAllPhotos(updated);
-                syncDatabase(updated, null, null);
-                setLightboxItem(null);
-                notify(`КАДР ${id} УДАЛЕН`);
-            };
 
             return (
                 <section className="brutal-card p-5 bg-white text-black">
@@ -1425,65 +1329,6 @@
                             <span className="px-2 py-1 bg-[#F4F0EA] border-2 border-black font-bold">
                                 КАДРОВ: {filteredPhotos.length}
                             </span>
-                            {isPhotosModified && (
-                                <div className="flex items-center gap-1">
-                                    <span className="px-1.5 py-0.5 bg-[#FF5722] text-white font-mono text-[10px] font-bold" title="В браузере сохранены новые добавленные кадры">
-                                        LOCAL
-                                    </span>
-                                    {isAdmin && onResetToServer && (
-                                        <button
-                                            type="button"
-                                            onClick={onResetToServer}
-                                            className="brutal-btn px-2 py-0.5 bg-neutral-200 text-neutral-800 text-[10px] font-bold uppercase hover:bg-red-500 hover:text-white"
-                                            title="Очистить локальный кэш и вернуть кадры из файла database.json"
-                                        >
-                                            СБРОС К ФАЙЛУ
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                            {isAdmin ? (
-                                <>
-                                    <button
-                                        onClick={() => {
-                                            sfx.playClick();
-                                            setIsAdding(!isAdding);
-                                        }}
-                                        onMouseEnter={() => sfx.playHover()}
-                                        className={`brutal-btn px-3 py-1 font-extrabold uppercase flex items-center gap-1.5 ${
-                                            isAdding ? 'bg-[#FF5722] text-white' : 'bg-[#CCFF00] text-black'
-                                        }`}
-                                    >
-                                        <i className={`fa-solid ${isAdding ? 'fa-xmark' : 'fa-camera-retro'}`}></i>
-                                        {isAdding ? 'ЗАКРЫТЬ ФОРМУ' : '+ ДОБАВИТЬ КАДР'}
-                                    </button>
-                                    {onExportDatabase && (
-                                        <button
-                                            type="button"
-                                            onClick={onExportDatabase}
-                                            onMouseEnter={() => sfx.playHover()}
-                                            className="brutal-btn px-2.5 py-1 bg-[#00E5FF] text-black font-bold uppercase flex items-center gap-1.5"
-                                            title="Скачать актуальный database.json со всеми добавленными фотографиями для коммита на GitHub"
-                                        >
-                                            <i className="fa-solid fa-file-export"></i>
-                                            <span className="hidden sm:inline">ЭКСПОРТ DB.JSON</span>
-                                        </button>
-                                    )}
-                                </>
-                            ) : (
-                                <button
-                                    onClick={() => {
-                                        sfx.playClick();
-                                        onOpenAdmin();
-                                    }}
-                                    onMouseEnter={() => sfx.playHover()}
-                                    className="brutal-btn px-3 py-1 bg-neutral-200 text-neutral-800 font-bold uppercase flex items-center gap-1.5"
-                                    title="Войти по паролю для загрузки фото"
-                                >
-                                    <i className="fa-solid fa-lock text-[#FF5722]"></i>
-                                    <span>ЗАГРУЗКА (ADMIN)</span>
-                                </button>
-                            )}
                         </div>
                     </div>
 
@@ -1504,95 +1349,6 @@
                             </button>
                         ))}
                     </div>
-
-                    {isAdmin && isAdding && (
-                        <form
-                            onSubmit={handleAddPhoto}
-                            className="mb-5 p-4 bg-[#F4F0EA] border-3 border-black shadow-[4px_4px_0px_#000] space-y-3 font-mono text-xs"
-                        >
-                            <div className="flex items-center justify-between border-b-2 border-black pb-1">
-                                <span className="font-extrabold uppercase text-sm">
-                                    ЗАГРУЗКА НОВОГО СНИМКА В БАЗУ
-                                </span>
-                                {isCompressing && (
-                                    <span className="text-[#FF5722] font-bold animate-pulse text-[11px]">
-                                        <i className="fa-solid fa-spinner fa-spin mr-1"></i> ОПТИМИЗАЦИЯ СНИМКА...
-                                    </span>
-                                )}
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="font-bold block mb-1">НАЗВАНИЕ КАДРА:</label>
-                                    <input
-                                        type="text"
-                                        value={newTitle}
-                                        onChange={(e) => setNewTitle(e.target.value)}
-                                        placeholder="Напр: NIGHT_SERVER_ROOM"
-                                        className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="font-bold block mb-1">КАТЕГОРИЯ:</label>
-                                    <select
-                                        value={newCategory}
-                                        onChange={(e) => setNewCategory(e.target.value)}
-                                        className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                    >
-                                        {categories.filter(c => c !== 'ВСЕ').map(c => (
-                                            <option key={c} value={c}>{c}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="font-bold block mb-1">
-                                        ФАЙЛ С ПК (АВТОСЖАТИЕ В B64):
-                                    </label>
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        disabled={isCompressing}
-                                        onChange={handleFileUpload}
-                                        className="w-full p-1.5 border-2 border-black bg-white font-bold disabled:opacity-50"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="font-bold block mb-1">ИЛИ ПРЯМАЯ ССЫЛКА / ПУТЬ В PUBLIC:</label>
-                                    <input
-                                        type="text"
-                                        value={newSrc}
-                                        onChange={(e) => setNewSrc(e.target.value)}
-                                        placeholder="image.jpg или https://..."
-                                        className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="font-bold block mb-1">ОПИСАНИЕ / МЕТАДАННЫЕ:</label>
-                                <input
-                                    type="text"
-                                    value={newDesc}
-                                    onChange={(e) => setNewDesc(e.target.value)}
-                                    placeholder="Краткая подпись к фотографии..."
-                                    className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                />
-                            </div>
-
-                            <div className="flex justify-end gap-2">
-                                <button
-                                    type="submit"
-                                    disabled={isCompressing}
-                                    className="brutal-btn px-5 py-2 bg-[#FF5722] text-white font-extrabold uppercase disabled:opacity-50"
-                                >
-                                    <i className="fa-solid fa-floppy-disk mr-1.5"></i>
-                                    {isCompressing ? 'ОБРАБОТКА...' : 'СОХРАНИТЬ В ФОТОАРХИВ'}
-                                </button>
-                            </div>
-                        </form>
-                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
                         {filteredPhotos.map((item, index) => {
@@ -1705,27 +1461,15 @@
                                     <p className="text-black font-bold pt-1">{lightboxItem.desc || 'Архивный снимок из медиа-хранилища.'}</p>
                                 </div>
 
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                    {isAdmin ? (
-                                        <button
-                                            onClick={() => handleDeletePhoto(lightboxItem.id)}
-                                            className="brutal-btn bg-neutral-200 hover:bg-red-500 hover:text-white px-3 py-1.5 text-xs font-extrabold uppercase"
-                                        >
-                                            <i className="fa-solid fa-trash mr-1.5"></i> УДАЛИТЬ КАДР
-                                        </button>
-                                    ) : (
-                                        <span className="text-[11px] font-bold text-neutral-600 flex items-center gap-1.5">
-                                            <i className="fa-solid fa-lock"></i> РЕЖИМ ЧТЕНИЯ
-                                        </span>
-                                    )}
+                                <div className="flex flex-wrap items-center justify-end gap-2">
                                     <a
                                         href={lightboxItem.src || lightboxItem.url}
                                         download={lightboxItem.title || `frame_${lightboxItem.id}`}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="brutal-btn bg-[#CCFF00] text-black px-4 py-1.5 text-xs font-extrabold uppercase"
+                                        className="brutal-btn bg-[#CCFF00] text-black px-4 py-1.5 text-xs font-extrabold uppercase flex items-center gap-1.5"
                                     >
-                                        <i className="fa-solid fa-download mr-1.5"></i> ОТКРЫТЬ ОРИГИНАЛ
+                                        <i className="fa-solid fa-download"></i> СКАЧАТЬ ОРИГИНАЛ
                                     </a>
                                 </div>
                             </div>
@@ -1974,23 +1718,17 @@
             return htmlParts.join('\n');
         }
 
-        const SrpWiki = ({ articles, setArticles, notify, syncDatabase, isAdmin, onOpenAdmin }) => {
+        const SrpWiki = ({ articles }) => {
             const [selectedId, setSelectedId] = useState(articles[0]?.id || "1786828017402");
             const [searchQuery, setSearchQuery] = useState('');
             const [activeCat, setActiveCat] = useState('ВСЕ');
-            const [isEditing, setIsEditing] = useState(false);
-            const [isCreating, setIsCreating] = useState(false);
             const [wikiModalImg, setWikiModalImg] = useState(null);
-
-            const [formTitle, setFormTitle] = useState('');
-            const [formCategory, setFormCategory] = useState('ОСНОВНОЕ');
-            const [formTags, setFormTags] = useState('');
-            const [formContent, setFormContent] = useState('');
 
             const categories = ['ВСЕ', 'ОСНОВНОЕ', 'ИСТОРИЯ / ЛОР', 'УСТАВ / ПРАВИЛА', 'ЛОКАЦИИ И ФРАКЦИИ'];
 
             const filteredArticles = useMemo(() => {
-                return articles.filter(art => {
+                const list = articles || [];
+                return list.filter(art => {
                     const artCat = art.category || 'ОСНОВНОЕ';
                     const matchesCat = activeCat === 'ВСЕ' || artCat === activeCat;
                     const q = searchQuery.toLowerCase();
@@ -2003,98 +1741,9 @@
             }, [articles, activeCat, searchQuery]);
 
             const currentArticle = useMemo(() => {
-                return articles.find(a => a.id === selectedId) || filteredArticles[0] || articles[0];
+                const list = articles || [];
+                return list.find(a => a.id === selectedId) || filteredArticles[0] || list[0];
             }, [articles, selectedId, filteredArticles]);
-
-            const startEditCurrent = () => {
-                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ВВЕДИ ПАРОЛЬ АДМИНА ДЛЯ РЕДАКТИРОВАНИЯ СТАТЕЙ")) return;
-                if (!currentArticle) return;
-                sfx.playClick();
-                setFormTitle(currentArticle.title);
-                setFormCategory(currentArticle.category);
-                setFormTags((currentArticle.tags || []).join(', '));
-                setFormContent(currentArticle.content);
-                setIsCreating(false);
-                setIsEditing(true);
-            };
-
-            const startCreateNew = () => {
-                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ВВЕДИ ПАРОЛЬ АДМИНА ДЛЯ СОЗДАНИЯ СТАТЕЙ")) return;
-                sfx.playClick();
-                setFormTitle('');
-                setFormCategory('ОСНОВНОЕ');
-                setFormTags('СРП, архив');
-                setFormContent('');
-                setIsEditing(false);
-                setIsCreating(true);
-            };
-
-            const handleSaveArticle = (e) => {
-                e.preventDefault();
-                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ДОСТУП ЗАПРЕЩЕН: НУЖЕН ПАРОЛЬ АДМИНА")) return;
-                if (!formTitle.trim() || !formContent.trim()) {
-                    notify("ЗАПОЛНИ ЗАГОЛОВОК И ТЕКСТ СТАТЬИ!", "warn");
-                    return;
-                }
-                const today = todayISO();
-                const parsedTags = formTags
-                    .split(',')
-                    .map(t => t.trim())
-                    .filter(Boolean);
-
-                if (isCreating) {
-                    const nextNum = String(articles.length + 1).padStart(2, '0');
-                    const newArt = {
-                        id: `SRP-${nextNum}`,
-                        title: formTitle.trim().toUpperCase(),
-                        category: formCategory,
-                        updated: today,
-                        author: "pruushkaa",
-                        tags: parsedTags.length ? parsedTags : ["СРП"],
-                        content: formContent
-                    };
-                    const updated = [newArt, ...articles];
-                    setArticles(updated);
-                    setSelectedId(newArt.id);
-                    syncDatabase(null, updated);
-                    notify(`СТАТЬЯ ${newArt.id} ОПУБЛИКОВАНА В ВИКИ СРП`);
-                } else if (isEditing && currentArticle) {
-                    const updated = articles.map(art =>
-                        art.id === currentArticle.id
-                            ? {
-                                  ...art,
-                                  title: formTitle.trim().toUpperCase(),
-                                  category: formCategory,
-                                  updated: today,
-                                  tags: parsedTags,
-                                  content: formContent
-                              }
-                            : art
-                    );
-                    setArticles(updated);
-                    syncDatabase(null, updated);
-                    notify(`СТАТЬЯ ${currentArticle.id} ОБНОВЛЕНА`);
-                }
-
-                sfx.playSuccess();
-                triggerGlitchSpike(1.1);
-                setIsEditing(false);
-                setIsCreating(false);
-            };
-
-            const handleDeleteArticle = (id) => {
-                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "УДАЛЕНИЕ ДОСТУПНО ТОЛЬКО АДМИНУ")) return;
-                if (articles.length <= 1) {
-                    notify("НЕЛЬЗЯ УДАЛИТЬ ПОСЛЕДНЮЮ СТАТЬЮ ВИКИ!", "warn");
-                    return;
-                }
-                sfx.playClick();
-                const updated = articles.filter(a => a.id !== id);
-                setArticles(updated);
-                setSelectedId(updated[0].id);
-                syncDatabase(null, updated);
-                notify(`СТАТЬЯ ${id} УДАЛЕНА ИЗ ВИКИ СРП`);
-            };
 
             return (
                 <section className="brutal-card p-5 bg-white text-black">
@@ -2109,27 +1758,9 @@
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-                            {isAdmin ? (
-                                <button
-                                    onClick={startCreateNew}
-                                    onMouseEnter={() => sfx.playHover()}
-                                    className="brutal-btn bg-[#CCFF00] text-black px-3 py-1 font-extrabold uppercase flex items-center gap-1.5"
-                                >
-                                    <i className="fa-solid fa-plus"></i> + НОВАЯ СТАТЬЯ
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={() => {
-                                        sfx.playClick();
-                                        onOpenAdmin();
-                                    }}
-                                    onMouseEnter={() => sfx.playHover()}
-                                    className="brutal-btn bg-neutral-200 text-neutral-800 px-3 py-1 font-bold uppercase flex items-center gap-1.5"
-                                    title="Войти по паролю для добавления статей"
-                                >
-                                    <i className="fa-solid fa-lock text-[#FF5722]"></i> ЧТЕНИЕ (ВОЙТИ ДЛЯ ПРАВКИ)
-                                </button>
-                            )}
+                            <span className="px-2 py-1 bg-[#F4F0EA] border-2 border-black font-bold">
+                                СТАТЕЙ: {filteredArticles.length}
+                            </span>
                         </div>
                     </div>
 
@@ -2209,84 +1840,7 @@
                         </div>
 
                         <div className="lg:col-span-8">
-                            {isEditing || isCreating ? (
-                                <form
-                                    onSubmit={handleSaveArticle}
-                                    className="border-3 border-black bg-[#F4F0EA] p-4 shadow-[5px_5px_0px_#000] space-y-3 font-mono text-xs"
-                                >
-                                    <div className="flex items-center justify-between border-b-2 border-black pb-2">
-                                        <span className="font-extrabold text-sm uppercase bg-black text-[#CCFF00] px-2 py-0.5">
-                                            {isCreating ? 'СОЗДАНИЕ НОВОЙ ЗАПИСИ СРП' : `РЕДАКТИРОВАНИЕ // ${currentArticle?.id}`}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setIsEditing(false);
-                                                setIsCreating(false);
-                                            }}
-                                            className="brutal-btn bg-white px-2.5 py-1 font-bold"
-                                        >
-                                            ОТМЕНА
-                                        </button>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="font-bold block mb-1">ЗАГОЛОВОК СТАТЬИ:</label>
-                                            <input
-                                                type="text"
-                                                value={formTitle}
-                                                onChange={(e) => setFormTitle(e.target.value)}
-                                                placeholder="Напр: ПРОТОКОЛ СРП №4"
-                                                className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="font-bold block mb-1">РУБРИКА:</label>
-                                            <select
-                                                value={formCategory}
-                                                onChange={(e) => setFormCategory(e.target.value)}
-                                                className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                            >
-                                                {categories.filter(c => c !== 'ВСЕ').map(c => (
-                                                    <option key={c} value={c}>{c}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="font-bold block mb-1">ТЕГИ (ЧЕРЕЗ ЗАПЯТУЮ):</label>
-                                        <input
-                                            type="text"
-                                            value={formTags}
-                                            onChange={(e) => setFormTags(e.target.value)}
-                                            placeholder="СРП, лор, документация"
-                                            className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="font-bold block mb-1">СОДЕРЖАНИЕ ДОКУМЕНТА:</label>
-                                        <textarea
-                                            rows="9"
-                                            value={formContent}
-                                            onChange={(e) => setFormContent(e.target.value)}
-                                            placeholder="Текст статьи, разделы, хронология..."
-                                            className="w-full p-3 border-2 border-black bg-white font-bold focus:outline-none leading-relaxed"
-                                        />
-                                    </div>
-
-                                    <div className="flex justify-end gap-2">
-                                        <button
-                                            type="submit"
-                                            className="brutal-btn px-5 py-2 bg-[#FF5722] text-white font-extrabold uppercase"
-                                        >
-                                            <i className="fa-solid fa-check mr-1.5"></i> СОХРАНИТЬ СТАТЬЮ
-                                        </button>
-                                    </div>
-                                </form>
-                            ) : currentArticle ? (
+                            {currentArticle ? (
                                 <div className="border-3 border-black bg-[#F4F0EA] p-5 shadow-[5px_5px_0px_#000] flex flex-col justify-between min-h-[380px]">
                                     <div>
                                         <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black pb-3 mb-4 font-mono text-xs">
@@ -2334,36 +1888,6 @@
                                                 </span>
                                             ))}
                                         </div>
-
-                                        {isAdmin ? (
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={startEditCurrent}
-                                                    onMouseEnter={() => sfx.playHover()}
-                                                    className="brutal-btn bg-[#00E5FF] text-black px-3 py-1.5 font-extrabold uppercase"
-                                                >
-                                                    <i className="fa-solid fa-pen-to-square mr-1"></i> РЕДАКТИРОВАТЬ
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeleteArticle(currentArticle.id)}
-                                                    onMouseEnter={() => sfx.playHover()}
-                                                    className="brutal-btn bg-white hover:bg-red-500 hover:text-white px-2.5 py-1.5 font-bold uppercase"
-                                                    title="Удалить статью"
-                                                >
-                                                    <i className="fa-solid fa-trash"></i>
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <button
-                                                onClick={() => {
-                                                    sfx.playClick();
-                                                    onOpenAdmin();
-                                                }}
-                                                className="font-mono text-[11px] font-bold text-neutral-600 hover:text-black underline flex items-center gap-1"
-                                            >
-                                                <i className="fa-solid fa-key"></i> Войти как владелец для редактирования
-                                            </button>
-                                        )}
                                     </div>
                                 </div>
                             ) : null}
@@ -2425,302 +1949,6 @@
             );
         };
 
-        const AdminModal = ({
-            isOpen,
-            onClose,
-            isAdmin,
-            setIsAdmin,
-            adminPass,
-            setAdminPass,
-            lastFmApiKey,
-            setLastFmApiKey,
-            lastFmUser,
-            setLastFmUser,
-            discordStatus,
-            setDiscordStatus,
-            discordText,
-            setDiscordText,
-            discordId,
-            setDiscordId,
-            onSaveSettingsToDb,
-            notify
-        }) => {
-            const [inputPass, setInputPass] = useState('');
-            const [newPass, setNewPass] = useState('');
-            const [keyDraft, setKeyDraft] = useState(lastFmApiKey || '');
-            const [userDraft, setUserDraft] = useState(lastFmUser || '');
-            const [statusDraft, setStatusDraft] = useState(discordStatus || 'online');
-            const [textDraft, setTextDraft] = useState(discordText || '');
-            const [idDraft, setIdDraft] = useState(discordId || '');
-
-            useEffect(() => {
-                if (isOpen) {
-                    setInputPass('');
-                    setKeyDraft(lastFmApiKey || '');
-                    setUserDraft(lastFmUser || 'pruushkaa');
-                    setStatusDraft(discordStatus || 'online');
-                    setTextDraft(discordText || '');
-                    setIdDraft(discordId || '');
-                }
-            }, [isOpen, lastFmApiKey, lastFmUser, discordStatus, discordText, discordId]);
-
-            if (!isOpen) return null;
-
-            const handleLogin = async (e) => {
-                e.preventDefault();
-                const cleanInput = inputPass.trim();
-                if (cleanInput === adminPass.trim() || (!adminPass && cleanInput === 'admin')) {
-                    sfx.playSuccess();
-                    triggerGlitchSpike(1.8);
-                    setIsAdmin(true);
-                    sessionStorage.setItem('pruushkaa_admin_session', 'true');
-                    notify("ДОСТУП РАЗРЕШЕН: РЕЖИМ ВЛАДЕЛЬЦА АКТИВИРОВАН!");
-                    return;
-                }
-                // Проверяем актуальный пароль на сервере
-                try {
-                    const res = await fetch(`/api/data?t=${Date.now()}`);
-                    if (res.ok) {
-                        const srv = await res.json();
-                        const srvPass = (srv.adminPass || 'admin').trim();
-                        if (cleanInput === srvPass) {
-                            setAdminPass(srvPass);
-                            try { localStorage.setItem('pruushkaa_admin_pass', srvPass); } catch (e) {}
-                            sfx.playSuccess();
-                            triggerGlitchSpike(1.8);
-                            setIsAdmin(true);
-                            sessionStorage.setItem('pruushkaa_admin_session', 'true');
-                            notify("ДОСТУП РАЗРЕШЕН: РЕЖИМ ВЛАДЕЛЬЦА АКТИВИРОВАН!");
-                            return;
-                        }
-                    }
-                } catch (err) {}
-                sfx.playClick();
-                triggerGlitchSpike(2.5);
-                notify("ОШИБКА: НЕВЕРНЫЙ ПАРОЛЬ АДМИНИСТРАТОРА!", "warn");
-            };
-
-            const handleSaveSettings = (e) => {
-                e.preventDefault();
-                const trimmedKey = keyDraft.trim();
-                const trimmedUser = userDraft.trim() || 'pruushkaa';
-                const trimmedText = textDraft.trim() || 'В сети';
-                const trimmedId = idDraft.trim();
-                const prevPass = adminPass;
-                const finalPass = newPass.trim() ? newPass.trim() : adminPass;
-
-                setLastFmApiKey(trimmedKey);
-                setLastFmUser(trimmedUser);
-                setDiscordStatus(statusDraft);
-                setDiscordText(trimmedText);
-                setDiscordId(trimmedId);
-                if (newPass.trim()) {
-                    setAdminPass(finalPass);
-                }
-
-                try {
-                    if (trimmedKey) {
-                        localStorage.setItem('pruushkaa_lastfm_key', trimmedKey);
-                    }
-                    if (trimmedUser) {
-                        localStorage.setItem('pruushkaa_lastfm_user', trimmedUser);
-                    }
-                    if (trimmedId) {
-                        localStorage.setItem('pruushkaa_discord_id', trimmedId);
-                    }
-                    if (newPass.trim()) {
-                        localStorage.setItem('pruushkaa_admin_pass', finalPass);
-                        setNewPass('');
-                    }
-                } catch (err) {}
-
-                if (onSaveSettingsToDb) {
-                    onSaveSettingsToDb({
-                        authPass: prevPass,
-                        adminPass: finalPass,
-                        lastFmApiKey: trimmedKey,
-                        lastFmUser: trimmedUser,
-                        discord: {
-                            status: statusDraft,
-                            text: trimmedText,
-                            discordId: trimmedId,
-                            id: trimmedId
-                        }
-                    });
-                }
-
-                sfx.playSuccess();
-                triggerGlitchSpike(1.2);
-                notify("СИНХРОНИЗАЦИЯ С СЕРВЕРОМ...");
-                onClose();
-            };
-
-            return (
-                <div
-                    className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 font-mono overflow-y-auto"
-                    onClick={onClose}
-                >
-                    <div
-                        className="bg-white text-black border-4 border-black shadow-[10px_10px_0px_#CCFF00] max-w-md w-full p-5 my-8"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between border-b-2 border-black pb-3 mb-4">
-                            <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.5 text-xs font-extrabold border-2 border-black ${
-                                    isAdmin ? 'bg-[#CCFF00] text-black' : 'bg-[#FF5722] text-white'
-                                }`}>
-                                    {isAdmin ? 'ROOT // UNLOCKED' : 'AUTH // REQUIRED'}
-                                </span>
-                                <span className="font-extrabold text-sm uppercase">
-                                    ТЕРМИНАЛ ВЛАДЕЛЬЦА
-                                </span>
-                            </div>
-                            <button
-                                onClick={onClose}
-                                className="brutal-btn bg-black text-white px-2.5 py-0.5 text-xs font-extrabold"
-                            >
-                                [X]
-                            </button>
-                        </div>
-
-                        {!isAdmin ? (
-                            <form onSubmit={handleLogin} className="space-y-4 text-xs">
-                                <div className="p-3 bg-[#F4F0EA] border-2 border-black font-bold leading-relaxed">
-                                    Добавление фотографий, редактирование Вики СРП и смена статуса/ключей защищены паролем владельца.
-                                </div>
-                                <div>
-                                    <label className="font-extrabold block mb-1 uppercase">
-                                        ВВЕДИ ПАРОЛЬ АДМИНИСТРАТОРА:
-                                    </label>
-                                    <input
-                                        type="password"
-                                        value={inputPass}
-                                        onChange={(e) => setInputPass(e.target.value)}
-                                        placeholder="Пароль (по умолчанию: admin)"
-                                        autoFocus
-                                        className="w-full p-2.5 border-3 border-black bg-[#F4F0EA] font-extrabold text-sm focus:outline-none"
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    className="brutal-btn w-full py-2.5 bg-[#FF5722] text-white font-extrabold uppercase text-xs"
-                                >
-                                    <i className="fa-solid fa-unlock-keyhole mr-1.5"></i> РАЗБЛОКИРОВАТЬ РЕДАКТОР И API
-                                </button>
-                            </form>
-                        ) : (
-                            <form onSubmit={handleSaveSettings} className="space-y-3 text-xs">
-                                <div className="p-2.5 bg-[#CCFF00] border-2 border-black font-extrabold">
-                                    ✓ ТЫ АВТОРИЗОВАН КАК ВЛАДЕЛЕЦ. ИЗМЕНЕНИЯ СОХРАНЯТСЯ В БД.
-                                </div>
-
-                                <div className="p-3 bg-[#F4F0EA] border-2 border-black space-y-2.5">
-                                    <div className="font-extrabold uppercase border-b border-black pb-1 text-[#7C4DFF]">
-                                        СТАТУС В DISCORD
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="font-bold block mb-1">РЕЖИМ АКТИВНОСТИ:</label>
-                                            <select
-                                                value={statusDraft}
-                                                onChange={(e) => setStatusDraft(e.target.value)}
-                                                className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                            >
-                                                <option value="online">🟢 В СЕТИ (ONLINE)</option>
-                                                <option value="idle">🌙 ОТОШЕЛ (IDLE)</option>
-                                                <option value="dnd">⛔ НЕ БЕСПОКОИТЬ (DND)</option>
-                                                <option value="offline">⚪ НЕ В СЕТИ (OFFLINE)</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="font-bold block mb-1">DISCORD ID (LANYARD):</label>
-                                            <input
-                                                type="text"
-                                                value={idDraft}
-                                                onChange={(e) => setIdDraft(e.target.value)}
-                                                placeholder="Напр: 298347298347..."
-                                                className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="font-bold block mb-1">ТЕКСТ СТАТУСА В DISCORD:</label>
-                                        <input
-                                            type="text"
-                                            value={textDraft}
-                                            onChange={(e) => setTextDraft(e.target.value)}
-                                            placeholder="В сети"
-                                            className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="p-3 bg-[#F4F0EA] border-2 border-black space-y-2.5">
-                                    <div className="font-extrabold uppercase border-b border-black pb-1 text-[#FF5722]">
-                                        НАСТРОЙКА LAST.FM API
-                                    </div>
-                                    <div>
-                                        <label className="font-bold block mb-1">LAST.FM API KEY (32 символа):</label>
-                                        <input
-                                            type="text"
-                                            value={keyDraft}
-                                            onChange={(e) => setKeyDraft(e.target.value)}
-                                            placeholder="Вставь сюда свой API ключ Last.fm..."
-                                            className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="font-bold block mb-1">LAST.FM USERNAME:</label>
-                                        <input
-                                            type="text"
-                                            value={userDraft}
-                                            onChange={(e) => setUserDraft(e.target.value)}
-                                            placeholder="pruushkaa"
-                                            className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="p-3 bg-[#F4F0EA] border-2 border-black space-y-2">
-                                    <div className="font-extrabold uppercase border-b border-black pb-1">
-                                        СМЕНА ПАРОЛЯ АДМИНИСТРАТОРА
-                                    </div>
-                                    <input
-                                        type="password"
-                                        value={newPass}
-                                        onChange={(e) => setNewPass(e.target.value)}
-                                        placeholder="Новый пароль (оставь пустым, чтобы не менять)"
-                                        className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                    />
-                                </div>
-
-                                <div className="flex flex-wrap gap-2 pt-1">
-                                    <button
-                                        type="submit"
-                                        className="brutal-btn flex-1 py-2.5 bg-[#FF5722] text-white font-extrabold uppercase"
-                                    >
-                                        <i className="fa-solid fa-floppy-disk mr-1.5"></i> СОХРАНИТЬ И СИНХРОНИЗИРОВАТЬ
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            sfx.playClick();
-                                            setIsAdmin(false);
-                                            sessionStorage.removeItem('pruushkaa_admin_session');
-                                            notify("РЕЖИМ АДМИНИСТРАТОРА ЗАБЛОКИРОВАН");
-                                            onClose();
-                                        }}
-                                        className="brutal-btn px-3 py-2.5 bg-black text-white font-bold uppercase"
-                                    >
-                                        ВЫЙТИ [🔒]
-                                    </button>
-                                </div>
-                            </form>
-                        )}
-                    </div>
-                </div>
-            );
-        };
 
         // Где искать манифест маршрутов (первый — основной, его пишет scripts/sync-tracks.mjs)
         const TRACK_MANIFEST_URLS = [
@@ -2736,10 +1964,9 @@
         /* ==========================================================================
            GPX ROUTE ARCHIVE & INTERACTIVE MAP MODULE (LEAFLET + LEAFLET-GPX)
            ========================================================================== */
-        const GpxRouteArchive = ({ tracks, setTracks, notify, syncDatabase, isAdmin, onOpenAdmin, darkMode }) => {
+        const GpxRouteArchive = ({ tracks, notify, darkMode }) => {
             // Local preview tracks (in-memory, for Drag & Drop / file preview)
             const [localPreviewTracks, setLocalPreviewTracks] = useState([]);
-            const [showPublishHelp, setShowPublishHelp] = useState(false);
             const [selectedTrackId, setSelectedTrackId] = useState(null);
             const [selectedCategory, setSelectedCategory] = useState('ВСЕ');
             const [searchQuery, setSearchQuery] = useState('');
@@ -2748,15 +1975,6 @@
             const [mapError, setMapError] = useState(null);
             const [showStatsModal, setShowStatsModal] = useState(false);
             const [tileMode, setTileMode] = useState('auto'); // 'auto', 'dark', 'light'
-
-            // Admin creation form state
-            const [isAdding, setIsAdding] = useState(false);
-            const [formTitle, setFormTitle] = useState('');
-            const [formDate, setFormDate] = useState('');
-            const [formTags, setFormTags] = useState('gravel, off-road');
-            const [formDesc, setFormDesc] = useState('');
-            const [formGpxRaw, setFormGpxRaw] = useState('');
-            const [formTelemetry, setFormTelemetry] = useState(null);
 
             // Active track live telemetry calculated by L.GPX
             const [activeTelemetry, setActiveTelemetry] = useState(null);
@@ -2767,7 +1985,6 @@
             const gpxLayerRef = useRef(null);
             const markersLayerRef = useRef(null);
             const fileInputRef = useRef(null);
-            const adminFileInputRef = useRef(null);
 
             // Combine local preview tracks with repository manifest
             const allTracks = useMemo(() => {
@@ -3127,7 +2344,6 @@
                 sfx.playSuccess();
                 triggerGlitchSpike(1.2);
                 notify(`ОТКРЫТ ПРЕДПРОСМОТР: ${newPreviewList.length} ФАЙЛ(ОВ)`);
-                setShowPublishHelp(true);
             };
 
             const handleGpxFile = (file) => {
@@ -3176,75 +2392,6 @@
                 }
             };
 
-            // Admin: Process uploaded GPX for testing / adding
-            const handleAdminGpxFile = (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    const xml = ev.target.result;
-                    setFormGpxRaw(xml);
-                    const stats = calculateGpxTelemetry(xml);
-                    if (stats) setFormTelemetry(stats);
-                    if (!formTitle) {
-                        const baseName = gpxFileTitle(file.name);
-                        setFormTitle(baseName);
-                    }
-                    if (!formDate) {
-                        setFormDate(todayISO());
-                    }
-                    notify("GPX ФАЙЛ СЧИТАН И ТЕЛЕМЕТРИЯ РАССЧИТАНА!");
-                };
-                reader.readAsText(file);
-            };
-
-            // Admin: Save new route into current session tracks
-            const handleSaveNewRoute = async (e) => {
-                e.preventDefault();
-                if (!requireAdmin({ isAdmin, notify, onOpenAdmin }, "ДОСТУП ЗАПРЕЩЕН: ТРЕБУЕТСЯ ПАРОЛЬ АДМИНИСТРАТОРА")) return;
-                if (!formTitle.trim() || !formGpxRaw.trim()) {
-                    notify("УКАЖИТЕ НАЗВАНИЕ И ВЫБЕРИТЕ .GPX ФАЙЛ!", "warn");
-                    return;
-                }
-                const safeId = uniqueId('ride');
-                const parsedTags = formTags.split(',').map(t => t.trim()).filter(Boolean);
-                const createdTrack = {
-                    id: safeId,
-                    title: formTitle.trim(),
-                    date: formDate || todayISO(),
-                    file: `public/tracks/${safeId}.gpx`,
-                    rawGpx: formGpxRaw,
-                    description: formDesc.trim() || 'Маршрут добавлен через панель управления',
-                    tags: parsedTags.length > 0 ? parsedTags : ['custom', 'route'],
-                    telemetry: formTelemetry,
-                    isCustom: true
-                };
-                const updated = [createdTrack, ...(tracks || []).filter(t => t.id !== safeId)];
-                setTracks(updated);
-                setSelectedTrackId(safeId);
-                sfx.playSuccess();
-                triggerGlitchSpike(1.2);
-                setFormTitle('');
-                setFormDate('');
-                setFormDesc('');
-                setFormGpxRaw('');
-                setFormTelemetry(null);
-                setIsAdding(false);
-                setShowPublishHelp(true);
-                notify(`МАРШРУТ [${createdTrack.title}] ДОБАВЛЕН! СКАЧАЙТЕ MANIFEST.JSON И СДЕЛАЙТЕ GIT PUSH`);
-            };
-
-            // Admin: Delete route from active list
-            const handleDeleteRoute = async (id) => {
-                sfx.playClick();
-                const updated = (tracks || []).filter(t => t.id !== id);
-                setTracks(updated);
-                if (selectedTrackId === id) {
-                    setSelectedTrackId(updated[0]?.id || null);
-                }
-                notify(`МАРШРУТ УДАЛЕН. СКАЧАЙТЕ MANIFEST.JSON И СДЕЛАЙТЕ GIT PUSH`);
-            };
-
             // Close local preview track
             const handleRemovePreviewTrack = (id) => {
                 sfx.playClick();
@@ -3256,41 +2403,6 @@
                     return next;
                 });
                 notify('ЛОКАЛЬНЫЙ ТРЕК ЗАКРЫТ');
-            };
-
-            // Admin: Export tracks manifest for git commit
-            const handleExportTracksJson = () => {
-                sfx.playSuccess();
-                const exportData = tracks.map(t => ({
-                    id: t.id,
-                    title: t.title,
-                    date: t.date,
-                    file: t.file || `public/tracks/${t.id}.gpx`,
-                    description: t.description || '',
-                    tags: t.tags || [],
-                    telemetry: t.telemetry || null
-                }));
-                downloadFile(JSON.stringify(exportData, null, 2), 'manifest.json', 'application/json');
-                notify("МАНИФЕСТ СКАЧАН! ЗАМЕНИТЕ В PUBLIC/TRACKS/ И СДЕЛАЙТЕ GIT PUSH");
-            };
-
-            // Reset tracks back to repository manifest
-            const handleResetTracksToDefault = async () => {
-                sfx.playClick();
-                setLocalPreviewTracks([]);
-                const data = await fetchFirstJson(
-                    [`${TRACK_MANIFEST_URLS[0]}?t=${Date.now()}`],
-                    { accept: (json) => Array.isArray(json) && json.length > 0 }
-                );
-                if (data) {
-                    setTracks(data);
-                    setSelectedTrackId(data[0]?.id || null);
-                    notify("МАРШРУТЫ ПЕРЕЗАГРУЖЕНЫ ИЗ РЕПОЗИТОРИЯ");
-                    return;
-                }
-                setTracks(INITIAL_TRACKS);
-                setSelectedTrackId(INITIAL_TRACKS[0]?.id || null);
-                notify("МАРШРУТЫ СБРОШЕНЫ К ИСХОДНЫМ");
             };
 
             // Current display telemetry (prefer live computed, fallback to manifest)
@@ -3318,77 +2430,13 @@
                                 МАРШРУТОВ: {allTracks.length}
                             </span>
 
-                            {isAdmin ? (
-                                <>
-                                    <button
-                                        onClick={() => {
-                                            sfx.playClick();
-                                            setIsAdding(!isAdding);
-                                        }}
-                                        onMouseEnter={() => sfx.playHover()}
-                                        className={`brutal-btn px-3 py-1 font-extrabold uppercase flex items-center gap-1.5 ${
-                                            isAdding ? 'bg-[#FF5722] text-white' : 'bg-[#CCFF00] text-black'
-                                        }`}
-                                    >
-                                        <i className={`fa-solid ${isAdding ? 'fa-xmark' : 'fa-plus'}`}></i>
-                                        <span>{isAdding ? 'ЗАКРЫТЬ ФОРМУ' : '+ ДОБАВИТЬ В БАЗУ'}</span>
-                                    </button>
-
-                                    <button
-                                        onClick={handleExportTracksJson}
-                                        onMouseEnter={() => sfx.playHover()}
-                                        className="brutal-btn px-2.5 py-1 bg-white text-black font-extrabold uppercase flex items-center gap-1.5 border-2 border-black"
-                                        title="Скачать tracks.json для коммита в GitHub (чтобы ваши маршруты стали видны всем посетителям сайта)"
-                                    >
-                                        <i className="fa-solid fa-download text-[#FF5722]"></i>
-                                        <span className="hidden sm:inline">СКАЧАТЬ</span> MANIFEST.JSON
-                                    </button>
-
-                                    <button
-                                        onClick={handleResetTracksToDefault}
-                                        onMouseEnter={() => sfx.playHover()}
-                                        className="brutal-btn px-2 py-1 bg-neutral-200 text-neutral-700 hover:text-red-600 hover:bg-red-100 font-bold uppercase flex items-center gap-1 border-2 border-black"
-                                        title="Сбросить список маршрутов к начальным 3 демо-трекам"
-                                    >
-                                        <i className="fa-solid fa-rotate-left"></i>
-                                        <span className="hidden md:inline">СБРОС</span>
-                                    </button>
-                                </>
-                            ) : (
-                                <button
-                                    onClick={() => {
-                                        sfx.playClick();
-                                        onOpenAdmin();
-                                    }}
-                                    onMouseEnter={() => sfx.playHover()}
-                                    className="brutal-btn px-3 py-1 bg-neutral-200 text-neutral-800 font-bold uppercase flex items-center gap-1.5"
-                                    title="Войти по паролю для добавления маршрутов в базу"
-                                >
-                                    <i className="fa-solid fa-lock text-[#FF5722]"></i>
-                                    <span>ДОБАВИТЬ В БАЗУ (ADMIN)</span>
-                                </button>
-                            )}
-
-                            <button
-                                onClick={() => {
-                                    sfx.playClick();
-                                    setShowPublishHelp(true);
-                                }}
-                                onMouseEnter={() => sfx.playHover()}
-                                className="brutal-btn px-2.5 py-1 bg-[#CCFF00] text-black font-extrabold uppercase flex items-center gap-1.5 border-2 border-black"
-                                title="Инструкция: как опубликовать маршрут на GitHub Pages для всех посетителей"
-                            >
-                                <i className="fa-solid fa-cloud-arrow-up text-black"></i>
-                                <span>КАК ОПУБЛИКОВАТЬ?</span>
-                            </button>
-
                             <button
                                 onClick={() => fileInputRef.current?.click()}
                                 onMouseEnter={() => sfx.playHover()}
-                                className="brutal-btn bg-[#F4F0EA] text-black px-3 py-1 font-extrabold uppercase flex items-center gap-1.5"
+                                className="brutal-btn bg-[#CCFF00] text-black px-3 py-1 font-extrabold uppercase flex items-center gap-1.5"
                                 title="Открыть .gpx файл с ПК в режиме локального предпросмотра"
                             >
-                                <i className="fa-solid fa-file-arrow-up text-[#FF5722]"></i>
+                                <i className="fa-solid fa-file-arrow-up text-black"></i>
                                 <span>ПРЕДПРОСМОТР .GPX</span>
                             </button>
                             <input
@@ -3405,102 +2453,6 @@
                             />
                         </div>
                     </div>
-
-                    {/* Admin Add Route Form */}
-                    {isAdmin && isAdding && (
-                        <form
-                            onSubmit={handleSaveNewRoute}
-                            className="mb-5 p-4 bg-[#F4F0EA] border-3 border-black shadow-[4px_4px_0px_#000] space-y-3 font-mono text-xs"
-                        >
-                            <div className="font-extrabold uppercase text-sm border-b-2 border-black pb-1.5 flex items-center justify-between">
-                                <span>СОХРАНЕНИЕ НОВОГО МАРШРУТА В ОБЩУЮ БАЗУ</span>
-                                <span className="bg-[#CCFF00] text-black px-2 py-0.5 text-[10px] border border-black font-bold">ПОСТОЯННОЕ ХРАНЕНИЕ</span>
-                            </div>
-
-                            <div className="p-2.5 bg-neutral-900 text-white border-2 border-black text-[11px] leading-relaxed flex items-start gap-2">
-                                <i className="fa-solid fa-circle-info text-[#CCFF00] mt-0.5 shrink-0"></i>
-                                <div>
-                                    <b>Хранение данных:</b> При сохранении маршрут мгновенно закрепляется в вашем браузере (LocalStorage) и <b>не пропадет при перезагрузке страницы</b>. Чтобы маршрут стал доступен всем посетителям сайта на GitHub Pages — нажмите «СКАЧАТЬ TRACKS.JSON» и сделайте <code>git push</code> (или закиньте .gpx файл в папку <code>tracks/</code> на компьютере и выполните <code>npm run sync:tracks</code>).
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="font-bold block mb-1">НАЗВАНИЕ МАРШРУТА:</label>
-                                    <input
-                                        type="text"
-                                        value={formTitle}
-                                        onChange={(e) => setFormTitle(e.target.value)}
-                                        placeholder="Напр: ТРЕЙЛ ПО СОСНОВОМУ БОРУ"
-                                        className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="font-bold block mb-1">ДАТА ЗАЕЗДА (YYYY-MM-DD):</label>
-                                    <input
-                                        type="date"
-                                        value={formDate}
-                                        onChange={(e) => setFormDate(e.target.value)}
-                                        className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="font-bold block mb-1">ВЫБЕРИТЕ .GPX ФАЙЛ С ПК:</label>
-                                    <input
-                                        ref={adminFileInputRef}
-                                        type="file"
-                                        accept=".gpx,application/gpx+xml"
-                                        onChange={handleAdminGpxFile}
-                                        className="w-full p-1.5 border-2 border-black bg-white font-bold"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="font-bold block mb-1">ТЕГИ (ЧЕРЕЗ ЗАПЯТУЮ):</label>
-                                    <input
-                                        type="text"
-                                        value={formTags}
-                                        onChange={(e) => setFormTags(e.target.value)}
-                                        placeholder="gravel, off-road, forest"
-                                        className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            {formTelemetry && (
-                                <div className="p-2 bg-white border-2 border-black flex flex-wrap gap-4 text-[11px] font-bold">
-                                    <span>РАСЧИТАННАЯ ТЕЛЕМЕТРИЯ:</span>
-                                    <span className="text-[#FF5722]">Дистанция: {formTelemetry.distanceKm} км</span>
-                                    <span className="text-black">Подъем: +{formTelemetry.elevationGainM} м</span>
-                                    <span className="text-neutral-600">Время: {formTelemetry.movingTime}</span>
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="font-bold block mb-1">ОПИСАНИЕ МАРШРУТА:</label>
-                                <textarea
-                                    value={formDesc}
-                                    onChange={(e) => setFormDesc(e.target.value)}
-                                    placeholder="Особенности дорожного покрытия, рельеф, ориентиры, точки отдыха..."
-                                    rows="2"
-                                    className="w-full p-2 border-2 border-black bg-white font-bold focus:outline-none"
-                                />
-                            </div>
-
-                            <div className="flex justify-end gap-2 pt-1">
-                                <button
-                                    type="submit"
-                                    className="brutal-btn px-5 py-2 bg-[#FF5722] text-white font-extrabold uppercase flex items-center gap-1.5"
-                                >
-                                    <i className="fa-solid fa-floppy-disk"></i> СОХРАНИТЬ В БАЗУ ДАННЫХ САЙТА
-                                </button>
-                            </div>
-                        </form>
-                    )}
 
                     {/* Filter & Categories Bar */}
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-4 font-mono text-xs">
@@ -3566,14 +2518,8 @@
                                 <div className="p-2.5 bg-[#CCFF00] border-2 border-black text-black font-mono text-[11px] font-bold flex flex-wrap items-center justify-between gap-2 shadow-[2px_2px_0px_#000]">
                                     <div className="flex items-center gap-2">
                                         <i className="fa-solid fa-eye text-black"></i>
-                                        <span>Локальных файлов: <b>{localPreviewTracks.length}</b> (видны только вам)</span>
+                                        <span>Локальных файлов: <b>{localPreviewTracks.length}</b> (предпросмотр)</span>
                                     </div>
-                                    <button
-                                        onClick={() => setShowPublishHelp(true)}
-                                        className="brutal-btn px-2 py-0.5 bg-black text-white text-[10px] uppercase font-extrabold"
-                                    >
-                                        Как опубликовать для всех?
-                                    </button>
                                 </div>
                             )}
 
@@ -3694,19 +2640,7 @@
                                                             >
                                                                 ✕ ЗАКРЫТЬ
                                                             </button>
-                                                        ) : (isAdmin && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleDeleteRoute(item.id);
-                                                                }}
-                                                                className="brutal-btn bg-neutral-200 text-[#FF5722] hover:bg-[#FF5722] hover:text-white px-1.5 py-0.5 text-[9px] font-extrabold uppercase ml-1"
-                                                                title="Удалить маршрут"
-                                                            >
-                                                                ✕ УДАЛИТЬ
-                                                            </button>
-                                                        ))}
+                                                        ) : null}
                                                     </div>
                                                     <span className="text-[10px] font-extrabold text-[#FF5722] flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                                                         ПОКАЗАТЬ <i className="fa-solid fa-arrow-right"></i>
@@ -4114,26 +3048,9 @@
             const [toast, setToast] = useState(null);
             const [discordCopied, setDiscordCopied] = useState(false);
             const [cmdOpen, setCmdOpen] = useState(false);
-            const [adminModalOpen, setAdminModalOpen] = useState(false);
             const [visitorCount, setVisitorCount] = useState(1428);
             const [activeSection, setActiveSection] = useState('HOME');
             const [tracks, setTracks] = useState(INITIAL_TRACKS);
-
-            const [isAdmin, setIsAdmin] = useState(() => {
-                try {
-                    return sessionStorage.getItem('pruushkaa_admin_session') === 'true';
-                } catch (e) {
-                    return false;
-                }
-            });
-
-            const [adminPass, setAdminPass] = useState(() => {
-                try {
-                    return localStorage.getItem('pruushkaa_admin_pass') || CONFIG.DEFAULT_ADMIN_PASSWORD;
-                } catch (e) {
-                    return CONFIG.DEFAULT_ADMIN_PASSWORD;
-                }
-            });
 
             const [lastFmApiKey, setLastFmApiKey] = useState(() => {
                 if (CONFIG.LASTFM_API_KEY && CONFIG.LASTFM_API_KEY !== 'ВАШ_LASTFM_API_KEY') {
@@ -4216,39 +3133,24 @@
                     });
                     if (!data || !isMounted) return;
 
-                    // Photos: если пользователь добавлял/удалял фото локально, не затираем их устаревшим database.json
                     if (Array.isArray(data.photos) && data.photos.length > 0) {
-                        const isPhotosModified = localStorage.getItem('pruushkaa_photos_user_modified') === 'true';
-                        if (!isPhotosModified) {
-                            const normalized = normalizePhotos(data.photos);
-                            setPhotos(normalized);
-                            persistAllPhotos(normalized);
-                        }
+                        const normalized = normalizePhotos(data.photos);
+                        setPhotos(normalized);
+                        persistAllPhotos(normalized);
                     }
 
-                    // Wiki: если пользователь редактировал wiki локально, не затираем их
                     const serverWiki = Array.isArray(data.wiki)
                         ? data.wiki
                         : (Array.isArray(data.articles) ? data.articles : null);
                     if (serverWiki && serverWiki.length > 0) {
-                        const isWikiModified = localStorage.getItem('pruushkaa_wiki_user_modified') === 'true';
-                        if (!isWikiModified) {
-                            const normalizedW = normalizeWiki(serverWiki);
-                            setWikiArticles(normalizedW);
-                            persistAllWiki(normalizedW);
-                        }
+                        const normalizedW = normalizeWiki(serverWiki);
+                        setWikiArticles(normalizedW);
+                        persistAllWiki(normalizedW);
                     }
 
                     if (Array.isArray(data.tracks) && data.tracks.length > 0) {
-                        const isTracksModified = localStorage.getItem('pruushkaa_tracks_user_modified') === 'true';
-                        if (!isTracksModified) {
-                            setTracks(data.tracks);
-                            persistAllTracks(data.tracks);
-                        }
-                    }
-                    if (data.adminPass) {
-                        setAdminPass(data.adminPass);
-                        try { localStorage.setItem('pruushkaa_admin_pass', data.adminPass); } catch (e) {}
+                        setTracks(data.tracks);
+                        persistAllTracks(data.tracks);
                     }
                     if (data.lastFmApiKey !== undefined && data.lastFmApiKey !== '') {
                         setLastFmApiKey(data.lastFmApiKey);
@@ -4290,128 +3192,6 @@
                     clearInterval(syncInterval);
                 };
             }, []);
-
-            const syncDatabase = useCallback(async (nextPhotos, nextWiki, customPayload, nextTracks) => {
-                if (!isAdmin) {
-                    notify("ДЛЯ СИНХРОНИЗАЦИИ ТРЕБУЮТСЯ ПРАВА АДМИНИСТРАТОРА", "warn");
-                    return;
-                }
-                const pToSave = (nextPhotos !== null && nextPhotos !== undefined) ? nextPhotos : photos;
-                const wToSave = (nextWiki !== null && nextWiki !== undefined) ? nextWiki : wikiArticles;
-                const tToSave = (nextTracks !== null && nextTracks !== undefined) ? nextTracks : tracks;
-                const discObj = customPayload?.discord || {
-                    status: discordStatus,
-                    text: discordText,
-                    discordId: discordId,
-                    id: discordId
-                };
-                const authPassToSend = customPayload?.authPass || adminPass;
-                const passToSave = customPayload?.adminPass || adminPass;
-                const keyToSave = customPayload?.lastFmApiKey !== undefined ? customPayload.lastFmApiKey : lastFmApiKey;
-                const userToSave = customPayload?.lastFmUser || lastFmUser;
-
-                // 1. Немедленно и надёжно сохраняем в IndexedDB и LocalStorage браузера
-                if (nextPhotos !== null && nextPhotos !== undefined) {
-                    await persistAllPhotos(pToSave);
-                }
-                if (nextWiki !== null && nextWiki !== undefined) {
-                    await persistAllWiki(wToSave);
-                }
-                if (nextTracks !== null && nextTracks !== undefined) {
-                    await persistAllTracks(tToSave);
-                }
-
-                try {
-                    localStorage.setItem('pruushkaa_admin_pass', passToSave);
-                    if (keyToSave && keyToSave !== 'ВАШ_LASTFM_API_KEY') {
-                        localStorage.setItem('pruushkaa_lastfm_key', keyToSave);
-                    }
-                    if (userToSave) {
-                        localStorage.setItem('pruushkaa_lastfm_user', userToSave);
-                    }
-                } catch (e) {}
-
-                if (window.location.protocol === 'file:') {
-                    notify("СОХРАНЕНО В БРАУЗЕРЕ (FILE://). ДЛЯ GITHUB НАЖМИТЕ «ЭКСПОРТ DB.JSON»", "info");
-                    return;
-                }
-
-                // 2. Пытаемся синхронизировать с бэкендом (относительный адрес и порт :3001)
-                const postUrls = ['/api/data'];
-                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                    if (window.location.port !== '3001') {
-                        postUrls.push('http://localhost:3001/api/data', 'http://127.0.0.1:3001/api/data');
-                    }
-                }
-
-                let serverSaved = false;
-                const payload = JSON.stringify({
-                    authPass: authPassToSend,
-                    password: authPassToSend,
-                    adminPass: passToSave,
-                    lastFmApiKey: keyToSave,
-                    lastFmUser: userToSave,
-                    photos: pToSave,
-                    wiki: wToSave,
-                    articles: wToSave,
-                    tracks: tToSave,
-                    discord: discObj,
-                    discordStatus: discObj.text
-                });
-
-                for (const url of postUrls) {
-                    try {
-                        const res = await fetch(`${url}?t=${Date.now()}`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'x-admin-password': authPassToSend
-                            },
-                            body: payload
-                        });
-                        if (res.ok) {
-                            serverSaved = true;
-                            try {
-                                localStorage.removeItem('pruushkaa_photos_user_modified');
-                                localStorage.removeItem('pruushkaa_wiki_user_modified');
-                            } catch (e) {}
-                            notify("СОХРАНЕНО В DATABASE.JSON НА СЕРВЕРЕ (ДЛЯ ВСЕХ УСТРОЙСТВ)!");
-                            break;
-                        }
-                    } catch (netErr) {}
-                }
-
-                if (!serverSaved) {
-                    notify("СОХРАНЕНО В БРАУЗЕРЕ (INDEXEDDB). ДЛЯ ПУБЛИКАЦИИ НА GITHUB: НАЖМИТЕ «ЭКСПОРТ DB.JSON» И СДЕЛАЙТЕ GIT PUSH", "info");
-                }
-            }, [photos, wikiArticles, discordStatus, discordText, discordId, isAdmin, adminPass, lastFmApiKey, lastFmUser, notify, tracks]);
-
-            const handleExportDatabase = useCallback(() => {
-                sfx.playSuccess();
-                const dump = JSON.stringify({
-                    adminPass,
-                    lastFmApiKey,
-                    lastFmUser,
-                    discord: { status: discordStatus, text: discordText, discordId },
-                    photos,
-                    wiki: wikiArticles,
-                    tracks
-                }, null, 2);
-                downloadFile(dump, 'database.json', 'application/json');
-                notify("DATABASE.JSON ВЫГРУЖЕН! ЗАМЕНИТЕ В КОРНЕ ПРОЕКТА И СДЕЛАЙТЕ GIT PUSH");
-            }, [adminPass, lastFmApiKey, lastFmUser, discordStatus, discordText, discordId, photos, wikiArticles, tracks, notify]);
-
-            const handleResetToServerPhotos = useCallback(async () => {
-                if (!window.confirm("Сбросить локальные фотографии и загрузить кадры из исходного database.json?")) return;
-                try {
-                    localStorage.removeItem('pruushkaa_photos_user_modified');
-                    localStorage.removeItem('pruushkaa_photos_v2');
-                    await saveToIDB('pruushkaa_photos_v3', null);
-                } catch (e) {}
-                notify("ЛОКАЛЬНЫЙ КЭШ ФОТО ОЧИЩЕН, ПЕРЕЗАГРУЗКА...");
-                setTimeout(() => window.location.reload(), 400);
-            }, [notify]);
-
 
             useEffect(() => {
                 if (darkMode) {
@@ -4457,11 +3237,6 @@
             };
 
             const commandActions = [
-                {
-                    label: isAdmin ? "Открыть настройки владельца и API ключа Last.fm" : "Войти по паролю администратора (Разблокировать редактор)",
-                    cmd: "admin --auth",
-                    run: () => setAdminModalOpen(true)
-                },
                 {
                     label: "Открыть страницу музыкальной аналитики (40,000+ скробблов)",
                     cmd: "view --music",
@@ -4578,27 +3353,6 @@
                         actions={commandActions}
                     />
 
-                    <AdminModal
-                        isOpen={adminModalOpen}
-                        onClose={() => setAdminModalOpen(false)}
-                        isAdmin={isAdmin}
-                        setIsAdmin={setIsAdmin}
-                        adminPass={adminPass}
-                        setAdminPass={setAdminPass}
-                        lastFmApiKey={lastFmApiKey}
-                        setLastFmApiKey={setLastFmApiKey}
-                        lastFmUser={lastFmUser}
-                        setLastFmUser={setLastFmUser}
-                        discordStatus={discordStatus}
-                        setDiscordStatus={setDiscordStatus}
-                        discordText={discordText}
-                        setDiscordText={setDiscordText}
-                        discordId={discordId}
-                        setDiscordId={setDiscordId}
-                        onSaveSettingsToDb={(payload) => syncDatabase(null, null, payload)}
-                        notify={notify}
-                    />
-
                     <header className="brutal-card p-3 sm:p-4 mb-4 flex flex-wrap items-center justify-between gap-3 bg-white text-black">
                         <div className="flex items-center gap-3">
                             <div
@@ -4619,27 +3373,12 @@
                                     </span>
                                 </div>
                                 <div className="font-mono text-[11px] text-neutral-600 font-bold">
-                                    SYS_STATUS: ONLINE // {isAdmin ? 'ROOT_MODE: UNLOCKED' : 'READ_ONLY_MODE'}
+                                    SYS_STATUS: ONLINE // ARCHIVE_OS
                                 </div>
                             </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-                            <button
-                                onClick={() => {
-                                    sfx.playClick();
-                                    setAdminModalOpen(true);
-                                }}
-                                onMouseEnter={() => sfx.playHover()}
-                                className={`brutal-btn px-3 py-1.5 font-extrabold flex items-center gap-1.5 ${
-                                    isAdmin ? 'bg-[#CCFF00] text-black' : 'bg-[#FF5722] text-white'
-                                }`}
-                                title="Авторизация владельца и настройка Last.fm API"
-                            >
-                                <i className={`fa-solid ${isAdmin ? 'fa-unlock' : 'fa-lock'}`}></i>
-                                <span>{isAdmin ? 'ADMIN: ON' : 'ADMIN'}</span>
-                            </button>
-
                             <button
                                 onClick={() => {
                                     sfx.playClick();
@@ -4716,15 +3455,6 @@
                                 <span className="text-[10px] bg-black text-[#CCFF00] px-1 py-0.2">NEW</span>
                             </a>
                         </div>
-
-                        <button
-                            onClick={handleExportDatabase}
-                            onMouseEnter={() => sfx.playHover()}
-                            className="brutal-btn bg-[#CCFF00] text-black px-3 py-1.5 font-extrabold uppercase flex items-center gap-1.5"
-                            title="Скачать резервную копию database.json"
-                        >
-                            <i className="fa-solid fa-file-export"></i> ЭКСПОРТ DB.JSON
-                        </button>
                     </nav>
 
                     {activeSection === 'HOME' && (
@@ -4814,8 +3544,6 @@
                                 <DiscordWidget
                                     discordId={discordId}
                                     discordTag={CONFIG.DISCORD_TAG || "pruushkaa"}
-                                    isAdmin={isAdmin}
-                                    onOpenAdmin={() => setAdminModalOpen(true)}
                                     notify={notify}
                                 />
                             </div>
@@ -4825,8 +3553,6 @@
                                     notify={notify}
                                     lastFmApiKey={lastFmApiKey}
                                     lastFmUser={lastFmUser}
-                                    isAdmin={isAdmin}
-                                    onOpenAdmin={() => setAdminModalOpen(true)}
                                 />
                             </div>
 
@@ -5083,11 +3809,7 @@
                             </div>
                             <GpxRouteArchive
                                 tracks={tracks}
-                                setTracks={setTracks}
                                 notify={notify}
-                                syncDatabase={syncDatabase}
-                                isAdmin={isAdmin}
-                                onOpenAdmin={() => setAdminModalOpen(true)}
                                 darkMode={darkMode}
                             />
                         </div>
@@ -5112,13 +3834,6 @@
                             </div>
                             <PhotoArchive
                                 photos={photos}
-                                setPhotos={setPhotos}
-                                notify={notify}
-                                syncDatabase={syncDatabase}
-                                isAdmin={isAdmin}
-                                onOpenAdmin={() => setAdminModalOpen(true)}
-                                onExportDatabase={handleExportDatabase}
-                                onResetToServer={handleResetToServerPhotos}
                             />
                         </div>
                     )}
@@ -5142,11 +3857,6 @@
                             </div>
                             <SrpWiki
                                 articles={wikiArticles}
-                                setArticles={setWikiArticles}
-                                notify={notify}
-                                syncDatabase={syncDatabase}
-                                isAdmin={isAdmin}
-                                onOpenAdmin={() => setAdminModalOpen(true)}
                             />
                         </div>
                     )}
