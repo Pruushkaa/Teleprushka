@@ -661,10 +661,34 @@
             };
 
             const badgeMap = {
-                online: { label: 'В СЕТИ // ONLINE', bg: 'bg-[#CCFF00] text-black', dot: 'bg-green-600 animate-ping' },
-                idle: { label: 'ОТОШЕЛ // IDLE', bg: 'bg-amber-300 text-black', dot: 'bg-amber-600' },
-                dnd: { label: 'НЕ БЕСПОКОИТЬ', bg: 'bg-[#FF5722] text-white', dot: 'bg-white' },
-                offline: { label: 'ОФЛАЙН // OFFLINE', bg: 'bg-neutral-300 text-black', dot: 'bg-neutral-600' }
+                online: {
+                    label: 'В СЕТИ // ONLINE',
+                    bg: 'bg-[#CCFF00] text-black',
+                    dotPing: 'bg-[#CCFF00]',
+                    dotSolid: 'bg-green-700',
+                    avatarDot: 'bg-[#CCFF00]'
+                },
+                idle: {
+                    label: 'ОТОШЕЛ // IDLE',
+                    bg: 'bg-amber-300 text-black',
+                    dotPing: 'bg-amber-400',
+                    dotSolid: 'bg-amber-600',
+                    avatarDot: 'bg-amber-400'
+                },
+                dnd: {
+                    label: 'НЕ БЕСПОКОИТЬ',
+                    bg: 'bg-[#FF5722] text-white',
+                    dotPing: 'bg-[#FF5722]',
+                    dotSolid: 'bg-white',
+                    avatarDot: 'bg-[#FF5722]'
+                },
+                offline: {
+                    label: 'ОФЛАЙН // OFFLINE',
+                    bg: 'bg-neutral-300 text-black',
+                    dotPing: 'bg-neutral-400',
+                    dotSolid: 'bg-neutral-600',
+                    avatarDot: 'bg-neutral-400'
+                }
             };
             const st = badgeMap[status] || badgeMap.offline;
 
@@ -690,22 +714,43 @@
                             </div>
                         </div>
 
-                        <div className="bg-white border-3 border-black p-3 shadow-[4px_4px_0px_#000] font-mono mb-3">
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
+                        <div className="bg-white border-2 sm:border-[3px] border-black p-3 shadow-[4px_4px_0px_#000] font-mono mb-3">
+                            <div className="flex items-center gap-3 mb-2.5">
+                                <div className="relative shrink-0">
                                     {avatarUrl ? (
-                                        <img src={avatarUrl} alt="Avatar" className="w-7 h-7 rounded-full border-2 border-black object-cover" />
+                                        <img
+                                            src={avatarUrl}
+                                            alt="Avatar"
+                                            className="w-10 h-10 rounded-full border-2 border-black object-cover"
+                                        />
                                     ) : (
-                                        <div className="w-7 h-7 bg-neutral-200 border-2 border-black rounded-full flex items-center justify-center text-xs">
+                                        <div className="w-10 h-10 bg-neutral-200 border-2 border-black rounded-full flex items-center justify-center text-sm">
                                             <i className="fa-solid fa-user text-neutral-600"></i>
                                         </div>
                                     )}
-                                    <span className="text-lg font-extrabold tracking-tight">@{discordTag}</span>
+                                    <span
+                                        className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-black ${st.avatarDot}`}
+                                        title={st.label}
+                                    ></span>
                                 </div>
-                                <span className={`inline-flex items-center gap-1.5 text-[10px] font-extrabold px-2 py-0.5 border-2 border-black ${st.bg}`}>
-                                    <span className={`w-2 h-2 rounded-full ${st.dot}`}></span>
-                                    {st.label}
-                                </span>
+
+                                <div className="min-w-0 flex-1 flex flex-col justify-center">
+                                    <span
+                                        className="text-base sm:text-lg font-extrabold tracking-tight truncate leading-tight"
+                                        title={`@${discordTag}`}
+                                    >
+                                        @{discordTag}
+                                    </span>
+                                    <div className="mt-1 flex items-center">
+                                        <span className={`inline-flex items-center gap-1.5 text-[9px] font-extrabold px-1.5 py-0.5 border-2 border-black ${st.bg} whitespace-nowrap shadow-[1px_1px_0px_#000]`}>
+                                            <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${st.dotPing}`}></span>
+                                                <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${st.dotSolid}`}></span>
+                                            </span>
+                                            <span>{st.label}</span>
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="border-t-2 border-black pt-2 mt-1 text-xs">
