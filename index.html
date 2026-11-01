@@ -3192,8 +3192,13 @@
                     }
 
                     if (Array.isArray(data.tracks) && data.tracks.length > 0) {
-                        setTracks(data.tracks);
-                        persistAllTracks(data.tracks);
+                        setTracks((prev) => {
+                            if (prev && prev.length > data.tracks.length) {
+                                return prev;
+                            }
+                            persistAllTracks(data.tracks);
+                            return data.tracks;
+                        });
                     }
                     if (data.lastFmApiKey !== undefined && data.lastFmApiKey !== '') {
                         setLastFmApiKey(data.lastFmApiKey);
@@ -3223,12 +3228,21 @@
                         TRACK_MANIFEST_URLS.map((url) => url + bust),
                         { accept: (json) => Array.isArray(json) && json.length > 0 }
                     );
-                    if (data && isMounted) setTracks(data);
+                    if (data && isMounted) {
+                        setTracks((prev) => {
+                            if (prev && prev.length > data.length) {
+                                return prev;
+                            }
+                            persistAllTracks(data);
+                            return data;
+                        });
+                    }
                 };
 
                 loadTracksManifest();
                 const syncInterval = setInterval(() => {
                     loadServerDatabase().catch(() => {});
+                    loadTracksManifest().catch(() => {});
                 }, 15000);
                 return () => {
                     isMounted = false;

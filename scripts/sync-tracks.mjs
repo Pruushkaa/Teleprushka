@@ -210,6 +210,17 @@ function syncTracks() {
     writeJson(path.join(rootDir, 'tracks.json'), finalTracks);
     console.log(`  ✔ Manifest saved: ${rel(TRACKS_MANIFEST)}`);
     console.log(`  ✔ Manifest mirrored: tracks.json`);
+
+    const dbPath = path.join(rootDir, 'database.json');
+    if (fs.existsSync(dbPath)) {
+        try {
+            const dbData = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+            dbData.tracks = finalTracks;
+            writeJson(dbPath, dbData);
+            console.log(`  ✔ Mirrored to database.json`);
+        } catch (e) {}
+    }
+
     console.log(`\nSync completed: ${addedCount} added, ${preservedCount} preserved. Total: ${finalTracks.length} tracks.\n`);
 }
 
