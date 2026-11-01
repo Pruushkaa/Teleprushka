@@ -6,14 +6,14 @@
    ========================================================================== */
 
 :root {
-    --bg-main: #0D0E12;
-    --text-main: #F4F0EA;
-    --card-bg: #141416;
-    --surface-color: #121212;
-    --text-primary: #e0e0e0;
-    --text-secondary: #888888;
-    --border-color: rgba(255, 255, 255, 0.12);
-    --border-subtle: rgba(255, 255, 255, 0.08);
+    --bg-main: #F4F0EA;
+    --text-main: #111111;
+    --card-bg: #FFFFFF;
+    --surface-color: #F8F5F0;
+    --text-primary: #111111;
+    --text-secondary: #666666;
+    --border-color: #000000;
+    --border-subtle: rgba(0, 0, 0, 0.1);
     --shadow-color: #000000;
     --accent-orange: #FF5722;
     --accent-lime: #CCFF00;
@@ -86,73 +86,73 @@ body {
 }
 
 /* --------------------------------------------------------------------------
-   Navigation Hub Cards (Unified Dark Base & Precision Accent Details)
+   Navigation Hub Cards (Theme-Adaptive: Vivid Brutalist in Light, Sleek in Cyber)
    -------------------------------------------------------------------------- */
-.nav-hub-card {
+body.theme-cyber .nav-hub-card {
     background-color: #141416 !important;
     box-shadow: 6px 6px 0px 0px #000000;
     transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-.nav-hub-card.card-orange {
+body.theme-cyber .nav-hub-card.card-orange {
     border: 1px solid #FF5722 !important;
 }
 
-.nav-hub-card.card-orange:hover {
+body.theme-cyber .nav-hub-card.card-orange:hover {
     box-shadow: 8px 8px 0px 0px #000000, 0 0 16px rgba(255, 87, 34, 0.25);
     transform: translate(-2px, -2px);
 }
 
-.nav-hub-card.card-lime {
+body.theme-cyber .nav-hub-card.card-lime {
     border: 1px solid #CCFF00 !important;
 }
 
-.nav-hub-card.card-lime:hover {
+body.theme-cyber .nav-hub-card.card-lime:hover {
     box-shadow: 8px 8px 0px 0px #000000, 0 0 16px rgba(204, 255, 0, 0.25);
     transform: translate(-2px, -2px);
 }
 
-.nav-hub-card.card-cyan {
+body.theme-cyber .nav-hub-card.card-cyan {
     border: 1px solid #00E5FF !important;
 }
 
-.nav-hub-card.card-cyan:hover {
+body.theme-cyber .nav-hub-card.card-cyan:hover {
     box-shadow: 8px 8px 0px 0px #000000, 0 0 16px rgba(0, 229, 255, 0.25);
     transform: translate(-2px, -2px);
 }
 
-.nav-hub-card.card-violet {
+body.theme-cyber .nav-hub-card.card-violet {
     border: 1px solid #B388FF !important;
 }
 
-.nav-hub-card.card-violet:hover {
+body.theme-cyber .nav-hub-card.card-violet:hover {
     box-shadow: 8px 8px 0px 0px #000000, 0 0 16px rgba(179, 136, 255, 0.25);
     transform: translate(-2px, -2px);
 }
 
 /* --------------------------------------------------------------------------
-   Music Charts List Items (Dark Surface & Accent Hover)
+   Music Charts List Items (Theme-Adaptive)
    -------------------------------------------------------------------------- */
-.music-chart-item {
+body.theme-cyber .music-chart-item {
     background-color: rgba(255, 255, 255, 0.03) !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
     transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
 }
 
-.music-chart-item:hover {
+body.theme-cyber .music-chart-item:hover {
     background-color: rgba(255, 255, 255, 0.07) !important;
     transform: translateX(4px);
 }
 
-.music-chart-item.accent-orange:hover {
+body.theme-cyber .music-chart-item.accent-orange:hover {
     border-color: #FF5722 !important;
 }
 
-.music-chart-item.accent-cyan:hover {
+body.theme-cyber .music-chart-item.accent-cyan:hover {
     border-color: #00E5FF !important;
 }
 
-.music-chart-item.accent-lime:hover {
+body.theme-cyber .music-chart-item.accent-lime:hover {
     border-color: #CCFF00 !important;
 }
 
@@ -186,7 +186,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-    background: #141416;
+    background: #F4F0EA;
     border-left: 2px solid #000;
 }
 
@@ -197,11 +197,6 @@ body {
 
 body.theme-cyber ::-webkit-scrollbar-track {
     background: #141416;
-    border-left: 2px solid #000;
-}
-
-body.theme-light ::-webkit-scrollbar-track {
-    background: #F4F0EA;
     border-left: 2px solid #000;
 }
 
