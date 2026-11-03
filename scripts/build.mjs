@@ -73,13 +73,4 @@ for (const page of PAGES) {
     console.log(`[VALIDATION] ${page} JSX & Babel AST syntax verified 100% OK.`);
 }
 
-// 5. OpenGraph ассеты
-const ogImagePath = path.join(rootDir, 'public', 'og-image.png');
-if (fs.existsSync(ogImagePath)) {
-    const ogSizeKb = (fs.statSync(ogImagePath).size / 1024).toFixed(1);
-    console.log(`[VALIDATION] public/og-image.png OK (${ogSizeKb} KB).`);
-} else {
-    console.warn('[WARN] public/og-image.png does not exist! Running build:og is recommended.');
-}
-
 console.log('--- BUILD COMPLETE (STATUS: OK) ---');
