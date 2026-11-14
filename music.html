@@ -1809,9 +1809,14 @@
             onClose,
             onPlayTrack,
             activePlayingTrack,
-            isPlaying
+            isPlaying,
+            lastFmUser = 'Pruushkaa',
+            lastFmApiKey = '',
+            onNewScrobblesLoaded
         }) => {
             const [reportType, setReportType] = useState(initialReportType || 'WEEK');
+            const [extraScrobbles, setExtraScrobbles] = useState([]);
+            const [isLoadingPeriod, setIsLoadingPeriod] = useState(false);
 
             useEffect(() => {
                 if (initialReportType && initialReportType !== reportType) {
@@ -1819,19 +1824,26 @@
                 }
             }, [initialReportType]);
 
+            const effectiveScrobbles = useMemo(() => {
+                if (extraScrobbles.length > 0 && typeof window.MusicAnalytics !== 'undefined' && window.MusicAnalytics.mergeScrobbles) {
+                    return window.MusicAnalytics.mergeScrobbles(scrobbles, extraScrobbles).merged;
+                }
+                return scrobbles;
+            }, [scrobbles, extraScrobbles]);
+
             const intervals = useMemo(() => {
                 if (typeof window.MusicAnalytics === 'undefined') return [];
                 if (reportType === 'MONTH' && window.MusicAnalytics.buildMonthlyIntervals) {
-                    return window.MusicAnalytics.buildMonthlyIntervals(scrobbles);
+                    return window.MusicAnalytics.buildMonthlyIntervals(effectiveScrobbles);
                 }
                 if (reportType === 'YEAR' && window.MusicAnalytics.buildYearlyIntervals) {
-                    return window.MusicAnalytics.buildYearlyIntervals(scrobbles);
+                    return window.MusicAnalytics.buildYearlyIntervals(effectiveScrobbles);
                 }
                 if (window.MusicAnalytics.buildWeeklyIntervals) {
-                    return window.MusicAnalytics.buildWeeklyIntervals(scrobbles);
+                    return window.MusicAnalytics.buildWeeklyIntervals(effectiveScrobbles);
                 }
                 return [];
-            }, [scrobbles, reportType]);
+            }, [effectiveScrobbles, reportType]);
 
             // Default index for current interval
             const [selectedIndex, setSelectedIndex] = useState(0);
@@ -1846,12 +1858,43 @@
 
             const currentInterval = intervals[selectedIndex] || intervals[0] || null;
 
+            // Ensure complete pagination data for selected reporting week & previous week
+            useEffect(() => {
+                if (!currentInterval || !lastFmApiKey || lastFmApiKey.length < 16 || typeof window.MusicAnalytics === 'undefined' || !window.MusicAnalytics.fetchWeeklyReportTracks) return;
+                if (reportType !== 'WEEK') return;
+
+                const curStart = currentInterval.start;
+                const curEnd = currentInterval.end;
+                const prevStart = curStart - 7 * 24 * 3600 * 1000;
+
+                const hasCur = effectiveScrobbles.some(s => s && s.date >= curStart && s.date < curEnd);
+                const hasPrev = effectiveScrobbles.some(s => s && s.date >= prevStart && s.date < curStart);
+
+                if (!hasCur || !hasPrev) {
+                    setIsLoadingPeriod(true);
+                    window.MusicAnalytics.fetchWeeklyReportTracks(lastFmUser, lastFmApiKey, currentInterval)
+                        .then(res => {
+                            if (res && res.allTracks && res.allTracks.length > 0) {
+                                setExtraScrobbles(prev => {
+                                    const { merged } = window.MusicAnalytics.mergeScrobbles(prev, res.allTracks);
+                                    return merged;
+                                });
+                                if (onNewScrobblesLoaded) {
+                                    onNewScrobblesLoaded(res.allTracks);
+                                }
+                            }
+                        })
+                        .catch(err => console.warn('Failed to load weekly report tracks:', err))
+                        .finally(() => setIsLoadingPeriod(false));
+                }
+            }, [currentInterval, reportType, lastFmApiKey, lastFmUser, effectiveScrobbles.length]);
+
             const report = useMemo(() => {
                 if (!currentInterval || typeof window.MusicAnalytics === 'undefined' || !window.MusicAnalytics.computeReport) {
                     return null;
                 }
-                return window.MusicAnalytics.computeReport(scrobbles, currentInterval, reportType);
-            }, [scrobbles, currentInterval, reportType]);
+                return window.MusicAnalytics.computeReport(effectiveScrobbles, currentInterval, reportType);
+            }, [effectiveScrobbles, currentInterval, reportType]);
 
             // Interactive state for tooltips & active items
             const [hoveredDay, setHoveredDay] = useState(null);
@@ -1941,6 +1984,12 @@
                                     <span className="text-[10px] bg-[#CCFF00] text-black px-1.5 py-0.2 border border-black font-black">
                                         REPORT
                                     </span>
+                                    {isLoadingPeriod && (
+                                        <span className="text-[10px] bg-[#A855F7] text-white px-1.5 py-0.2 border border-black font-black flex items-center gap-1">
+                                            <i className="fa-solid fa-spinner fa-spin text-[9px]"></i>
+                                            <span>SYNCING</span>
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="text-[11px] font-mono text-neutral-400">
                                     {period.fullLabel}
@@ -4037,6 +4086,16 @@
                             onPlayTrack={playTrackSample}
                             activePlayingTrack={activeTrack}
                             isPlaying={isPlaying}
+                            lastFmUser={lastFmUser}
+                            lastFmApiKey={lastFmApiKey}
+                            onNewScrobblesLoaded={(newTracks) => {
+                                if (newTracks && newTracks.length > 0) {
+                                    setMergedScrobbles(prev => {
+                                        const { merged } = window.MusicAnalytics.mergeScrobbles(prev, newTracks);
+                                        return merged;
+                                    });
+                                }
+                            }}
                         />
                     )}
                 </div>

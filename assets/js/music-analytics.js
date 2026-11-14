@@ -276,8 +276,9 @@
 
     /**
      * Fetch newly listened tracks from Last.fm API since a specific timestamp
+     * Paginates through all pages (from page 1 to totalPages) using limit=200
      */
-    async function fetchNewScrobblesFromApi(user, apiKey, maxTimestampMs, limit = 50) {
+    async function fetchNewScrobblesFromApi(user, apiKey, maxTimestampMs, limit = 200) {
         if (!user || !apiKey || apiKey.length < 16) {
             return [];
         }
@@ -289,9 +290,13 @@
         const allNewTracks = [];
         let page = 1;
         let totalPages = 1;
-        const maxPages = 5; // Safety cap (up to 1,000 tracks)
+        const maxPages = 100; // Cap at 20,000 scrobbles for safety
 
         while (page <= totalPages && page <= maxPages) {
+            if (page > 1) {
+                await new Promise(r => setTimeout(r, 60));
+            }
+
             const url = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${cleanUser}&api_key=${cleanKey}&format=json&limit=${limit}&from=${fromSec}&page=${page}`;
             const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
             if (!res.ok) {
@@ -306,10 +311,14 @@
             totalPages = parseInt(attr.totalPages, 10) || 1;
 
             const rawTracks = data?.recenttracks?.track || [];
-            const trackList = Array.isArray(rawTracks) ? rawTracks : [rawTracks];
+            const trackList = Array.isArray(rawTracks) ? rawTracks : (rawTracks ? [rawTracks] : []);
 
             for (let i = 0; i < trackList.length; i++) {
-                const norm = normalizeApiTrack(trackList[i]);
+                const item = trackList[i];
+                if (!item) continue;
+                if (item['@attr']?.nowplaying === 'true') continue;
+                if (!item.date?.uts) continue;
+                const norm = normalizeApiTrack(item);
                 if (norm && !norm.nowPlaying && norm.date) {
                     allNewTracks.push(norm);
                 }
@@ -319,6 +328,103 @@
         }
 
         return allNewTracks;
+    }
+
+    /**
+     * Fetch all scrobbles for a specific time window [fromSec, toSec]
+     * Handles complete pagination (pages 1 to totalPages) and filters nowplaying
+     */
+    async function fetchTracksForPeriod(user, apiKey, fromSec, toSec) {
+        if (!user || !apiKey || apiKey.length < 16) {
+            return [];
+        }
+
+        const cleanUser = encodeURIComponent(String(user).trim());
+        const cleanKey = encodeURIComponent(String(apiKey).trim());
+        const fromParam = fromSec ? `&from=${Math.floor(fromSec)}` : '';
+        const toParam = toSec ? `&to=${Math.floor(toSec)}` : '';
+
+        // 1. Fetch Page 1 to inspect totalPages and first batch of tracks
+        const urlPage1 = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${cleanUser}&api_key=${cleanKey}&format=json&limit=200${fromParam}${toParam}&page=1`;
+        const res = await fetch(urlPage1, { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) throw new Error(`Last.fm API HTTP ${res.status}`);
+        const data = await res.json();
+        if (data?.error) throw new Error(data.message || 'Ошибка Last.fm API');
+
+        const attr = data?.recenttracks?.['@attr'] || {};
+        const totalPages = parseInt(attr.totalPages, 10) || 1;
+
+        let allRaw = [];
+        const rawP1 = data?.recenttracks?.track || [];
+        allRaw = allRaw.concat(Array.isArray(rawP1) ? rawP1 : (rawP1 ? [rawP1] : []));
+
+        // 2. Fetch remaining pages from page 2 to totalPages
+        if (totalPages > 1) {
+            const pageNumbers = [];
+            for (let p = 2; p <= totalPages; p++) {
+                pageNumbers.push(p);
+            }
+
+            // Fetch in concurrent batches of 3 to avoid rate limits
+            for (let i = 0; i < pageNumbers.length; i += 3) {
+                if (i > 0) {
+                    await new Promise(r => setTimeout(r, 60));
+                }
+                const batch = pageNumbers.slice(i, i + 3);
+                const batchResults = await Promise.all(batch.map(async (p) => {
+                    const url = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${cleanUser}&api_key=${cleanKey}&format=json&limit=200${fromParam}${toParam}&page=${p}`;
+                    const pRes = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                    if (!pRes.ok) return null;
+                    return pRes.json();
+                }));
+
+                for (const bData of batchResults) {
+                    if (!bData) continue;
+                    const pTracks = bData?.recenttracks?.track || [];
+                    allRaw = allRaw.concat(Array.isArray(pTracks) ? pTracks : (pTracks ? [pTracks] : []));
+                }
+            }
+        }
+
+        // 3. Filter out current playing track (nowplaying) and tracks without uts, then normalize
+        const tracks = [];
+        for (let i = 0; i < allRaw.length; i++) {
+            const item = allRaw[i];
+            if (!item) continue;
+            if (item['@attr']?.nowplaying === 'true') continue;
+            if (!item.date?.uts) continue;
+            const norm = normalizeApiTrack(item);
+            if (norm && !norm.nowPlaying && norm.date) {
+                tracks.push(norm);
+            }
+        }
+
+        return tracks;
+    }
+
+    /**
+     * Fetch complete scrobble history for both the current reporting week and the previous week
+     */
+    async function fetchWeeklyReportTracks(user, apiKey, targetInterval) {
+        if (!targetInterval || !user || !apiKey) {
+            return { currentWeekTracks: [], prevWeekTracks: [], allTracks: [] };
+        }
+
+        const curStartSec = Math.floor(targetInterval.start / 1000);
+        const curEndSec = Math.floor(targetInterval.end / 1000) - 1;
+        const prevStartSec = curStartSec - 7 * 24 * 3600;
+        const prevEndSec = curStartSec - 1;
+
+        const [curTracks, prevTracks] = await Promise.all([
+            fetchTracksForPeriod(user, apiKey, curStartSec, curEndSec),
+            fetchTracksForPeriod(user, apiKey, prevStartSec, prevEndSec)
+        ]);
+
+        return {
+            currentWeekTracks: curTracks,
+            prevWeekTracks: prevTracks,
+            allTracks: curTracks.concat(prevTracks)
+        };
     }
 
     /**
@@ -562,7 +668,7 @@
 
     /**
      * Builds list of all available Last.week periods in the dataset
-     * Defaults to Last.fm's official Friday 12:00:00 UTC cycle.
+     * Bound strictly to UTC Friday 00:00:00 to Thursday 23:59:59.
      */
     function buildWeeklyIntervals(scrobbles) {
         if (!scrobbles || scrobbles.length === 0) return [];
@@ -571,30 +677,33 @@
         if (sorted.length === 0) return [];
 
         const firstDate = sorted[0].date;
-        const lastDate = sorted[sorted.length - 1].date;
+        const lastDate = Math.max(sorted[sorted.length - 1].date, Date.now());
         const ONE_WEEK_MS = 7 * 24 * 3600 * 1000;
 
         const weeks = [];
 
-        // Check if there are scrobbles after the latest completed Friday
-        let anchorFri = new Date(lastDate);
-        anchorFri.setUTCHours(12, 0, 0, 0);
-        while (anchorFri.getUTCDay() !== 5 || anchorFri.getTime() > lastDate) {
-            anchorFri.setTime(anchorFri.getTime() - 24 * 3600 * 1000);
+        // Helper: returns Friday 00:00:00.000 UTC on or before the given timestamp
+        function getFridayMidnightUtc(ts) {
+            const d = new Date(ts);
+            const day = d.getUTCDay(); // 0 Sun, 1 Mon, 2 Tue, 3 Wed, 4 Thu, 5 Fri, 6 Sat
+            const diff = (day - 5 + 7) % 7;
+            return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - diff, 0, 0, 0, 0);
         }
 
-        // 1. If latest scrobble is more than 1 day past last Friday, provide a rolling latest 7-day period as week 0
-        if (lastDate - anchorFri.getTime() > 18 * 3600 * 1000) {
-            const rollingEnd = lastDate;
-            const rollingStart = rollingEnd - ONE_WEEK_MS;
-            const dS = new Date(rollingStart);
-            const dE = new Date(rollingEnd);
-            const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+        const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+        const latestFri = getFridayMidnightUtc(lastDate);
+
+        // 1. If there are scrobbles in the current in-progress week (from Friday 00:00:00 UTC)
+        if (lastDate >= latestFri) {
+            const curStart = latestFri;
+            const curEnd = curStart + ONE_WEEK_MS;
+            const dS = new Date(curStart);
+            const dE = new Date(curEnd - 1000); // Thu 23:59:59 UTC
             weeks.push({
-                id: 'week-rolling',
-                start: rollingStart,
-                end: rollingEnd,
-                label: `${dS.getUTCDate()} ${months[dS.getUTCMonth()]} — ${dE.getUTCDate()} ${months[dE.getUTCMonth()]} ${dE.getUTCFullYear()}`,
+                id: 'week-in-progress',
+                start: curStart,
+                end: curEnd,
+                label: `${dS.getUTCDate()} ${months[dS.getUTCMonth()]} — ${dE.getUTCDate()} ${months[dE.getUTCMonth()]} ${dE.getUTCFullYear()} (IN PROGRESS)`,
                 shortLabel: `${dS.getUTCDate()}.${String(dS.getUTCMonth()+1).padStart(2,'0')} — ${dE.getUTCDate()}.${String(dE.getUTCMonth()+1).padStart(2,'0')}`,
                 type: 'WEEK',
                 isRolling: true,
@@ -602,21 +711,21 @@
             });
         }
 
-        // 2. Generate Friday-to-Friday official Last.week periods
-        let curEnd = anchorFri.getTime();
+        // 2. Generate Friday-to-Thursday completed official Last.week periods
+        let completedEnd = latestFri;
         let weekNum = 50;
 
-        const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-
-        while (curEnd - ONE_WEEK_MS >= firstDate - ONE_WEEK_MS) {
-            const curStart = curEnd - ONE_WEEK_MS;
+        while (completedEnd - ONE_WEEK_MS >= firstDate - ONE_WEEK_MS) {
+            const curStart = completedEnd - ONE_WEEK_MS;
+            const curEnd = completedEnd;
             const dS = new Date(curStart);
-            const dE = new Date(curEnd);
+            const dE = new Date(curEnd - 1000); // Thursday 23:59:59.999 UTC
+
             const label = `${dS.getUTCDate()} ${months[dS.getUTCMonth()]} — ${dE.getUTCDate()} ${months[dE.getUTCMonth()]} ${dE.getUTCFullYear()}`;
             const shortLabel = `${dS.getUTCDate()}.${String(dS.getUTCMonth()+1).padStart(2,'0')} — ${dE.getUTCDate()}.${String(dE.getUTCMonth()+1).padStart(2,'0')}`;
 
             weeks.push({
-                id: `week-${curEnd}`,
+                id: `week-${curStart}`,
                 start: curStart,
                 end: curEnd,
                 label: label,
@@ -627,7 +736,7 @@
                 isLatest: weeks.length === 0
             });
 
-            curEnd = curStart;
+            completedEnd = curStart;
             weekNum--;
         }
 
@@ -943,12 +1052,14 @@
             const art = (s.artist || 'Unknown').trim();
             const alb = (s.album || '').trim();
             const trk = (s.track || 'Unknown').trim();
-            const albKey = art + ' — ' + (alb || 'Без альбома');
             const trkKey = art + ' — ' + trk;
 
             curArtistsMap.set(art, (curArtistsMap.get(art) || 0) + 1);
-            if (!curAlbumsMap.has(albKey)) curAlbumsMap.set(albKey, { artist: art, album: alb || 'Без альбома', count: 0, albumId: s.albumId });
-            curAlbumsMap.get(albKey).count++;
+            if (alb) {
+                const albKey = art + ' — ' + alb;
+                if (!curAlbumsMap.has(albKey)) curAlbumsMap.set(albKey, { artist: art, album: alb, count: 0, albumId: s.albumId });
+                curAlbumsMap.get(albKey).count++;
+            }
 
             if (!curTracksMap.has(trkKey)) curTracksMap.set(trkKey, { artist: art, track: trk, album: alb, count: 0 });
             curTracksMap.get(trkKey).count++;
@@ -959,8 +1070,11 @@
             const alb = (s.album || '').trim();
             const trk = (s.track || 'Unknown').trim();
             prevArtistsMap.set(art, (prevArtistsMap.get(art) || 0) + 1);
-            const albKey = art + ' — ' + (alb || 'Без альбома');
-            prevAlbumsMap.set(albKey, (prevAlbumsMap.get(albKey) || 0) + 1);
+            if (alb) {
+                const albKey = art + ' — ' + alb;
+                if (!prevAlbumsMap.has(albKey)) prevAlbumsMap.set(albKey, { artist: art, album: alb, count: 0, albumId: s.albumId });
+                prevAlbumsMap.get(albKey).count++;
+            }
             const trkKey = art + ' — ' + trk;
             prevTracksMap.set(trkKey, (prevTracksMap.get(trkKey) || 0) + 1);
         });
@@ -1195,10 +1309,10 @@
             pct: curTotal > 0 ? Math.round((count / curTotal) * 100) : 0
         }));
 
-        // 8. LISTENING CLOCK (24 hours)
+        // 8. LISTENING CLOCK (24 hours UTC)
         const hourly = new Array(24).fill(0);
         curItems.forEach(s => {
-            const h = new Date(s.date).getHours();
+            const h = new Date(s.date).getUTCHours();
             if (h >= 0 && h < 24) hourly[h]++;
         });
 
@@ -1374,6 +1488,8 @@
         normalizeApiTrack: normalizeApiTrack,
         mergeScrobbles: mergeScrobbles,
         fetchNewScrobblesFromApi: fetchNewScrobblesFromApi,
+        fetchTracksForPeriod: fetchTracksForPeriod,
+        fetchWeeklyReportTracks: fetchWeeklyReportTracks,
         pollLiveTrack: pollLiveTrack,
         fetchUserInfo: fetchUserInfo,
         formatScrobbleDate: formatScrobbleDate,
