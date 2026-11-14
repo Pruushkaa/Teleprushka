@@ -3094,7 +3094,56 @@
             const [discordCopied, setDiscordCopied] = useState(false);
             const [cmdOpen, setCmdOpen] = useState(false);
             const [visitorCount, setVisitorCount] = useState(1428);
-            const [activeSection, setActiveSection] = useState('HOME');
+
+            const getSectionFromHash = () => {
+                try {
+                    const raw = (window.location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
+                    if (raw === 'tracks' || raw === 'track' || raw === 'gpx') return 'TRACKS';
+                    if (raw === 'photos' || raw === 'photo' || raw === 'gallery') return 'PHOTOS';
+                    if (raw === 'wiki' || raw === 'articles' || raw === 'article') return 'WIKI';
+                    if (raw === 'tools' || raw === 'utilities' || raw === 'terminal') return 'TOOLS';
+                    if (raw === 'all') return 'ALL';
+                    return 'HOME';
+                } catch (e) {
+                    return 'HOME';
+                }
+            };
+
+            const [activeSection, setActiveSection] = useState(getSectionFromHash);
+
+            const changeSection = useCallback((sectionId) => {
+                const target = String(sectionId || '').toUpperCase();
+                setActiveSection(target);
+                if (target === 'HOME') {
+                    if (window.location.hash) {
+                        try {
+                            history.replaceState(null, '', window.location.pathname + window.location.search);
+                        } catch (e) {
+                            window.location.hash = '';
+                        }
+                    }
+                } else {
+                    const targetHash = '#' + target.toLowerCase();
+                    if (window.location.hash !== targetHash) {
+                        try {
+                            history.pushState(null, '', targetHash);
+                        } catch (e) {
+                            window.location.hash = targetHash;
+                        }
+                    }
+                }
+            }, []);
+
+            useEffect(() => {
+                const onHashChange = () => {
+                    const next = getSectionFromHash();
+                    setActiveSection(next);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                };
+                window.addEventListener('hashchange', onHashChange);
+                return () => window.removeEventListener('hashchange', onHashChange);
+            }, []);
+
             const [tracks, setTracks] = useState(INITIAL_TRACKS);
 
             const [lastFmApiKey, setLastFmApiKey] = useState(() => {
@@ -3307,7 +3356,7 @@
                     label: "Открыть раздел: ФОТОАРХИВ",
                     cmd: "view --photos",
                     run: () => {
-                        setActiveSection('PHOTOS');
+                        changeSection('PHOTOS');
                         notify("ПЕРЕКЛЮЧЕНО НА ФОТОАРХИВ");
                     }
                 },
@@ -3315,7 +3364,7 @@
                     label: "Открыть раздел: ВИКИ СРП",
                     cmd: "view --wiki",
                     run: () => {
-                        setActiveSection('WIKI');
+                        changeSection('WIKI');
                         notify("ПЕРЕКЛЮЧЕНО НА ВИКИ СРП");
                     }
                 },
@@ -3323,15 +3372,23 @@
                     label: "Открыть карту маршрутов (GPX Viewer)",
                     cmd: "view --tracks",
                     run: () => {
-                        setActiveSection('TRACKS');
+                        changeSection('TRACKS');
                         notify("ОТКРЫТА КАРТА МАРШРУТОВ // GPX");
+                    }
+                },
+                {
+                    label: "Открыть терминал утилит (Utility Deck)",
+                    cmd: "view --tools",
+                    run: () => {
+                        changeSection('TOOLS');
+                        notify("ОТКРЫТ ТЕРМИНАЛ УТИЛИТ");
                     }
                 },
                 {
                     label: "Показать все блоки портфолио",
                     cmd: "view --all",
                     run: () => {
-                        setActiveSection('ALL');
+                        changeSection('ALL');
                         notify("ОТОБРАЖЕНЫ ВСЕ МОДУЛИ АРХИВА");
                     }
                 },
@@ -3489,7 +3546,7 @@
                                     key={tab.id}
                                     onClick={() => {
                                         sfx.playClick();
-                                        setActiveSection(tab.id);
+                                        changeSection(tab.id);
                                         triggerGlitchSpike(0.5);
                                     }}
                                     onMouseEnter={() => sfx.playHover()}
@@ -3622,7 +3679,7 @@
                                         <div
                                             onClick={() => {
                                                 sfx.playClick();
-                                                setActiveSection('TRACKS');
+                                                changeSection('TRACKS');
                                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                                             }}
                                             onMouseEnter={() => sfx.playHover()}
@@ -3650,7 +3707,7 @@
                                         <div
                                             onClick={() => {
                                                 sfx.playClick();
-                                                setActiveSection('PHOTOS');
+                                                changeSection('PHOTOS');
                                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                                             }}
                                             onMouseEnter={() => sfx.playHover()}
@@ -3678,7 +3735,7 @@
                                         <div
                                             onClick={() => {
                                                 sfx.playClick();
-                                                setActiveSection('WIKI');
+                                                changeSection('WIKI');
                                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                                             }}
                                             onMouseEnter={() => sfx.playHover()}
@@ -3706,7 +3763,7 @@
                                         <div
                                             onClick={() => {
                                                 sfx.playClick();
-                                                setActiveSection('TOOLS');
+                                                changeSection('TOOLS');
                                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                                             }}
                                             onMouseEnter={() => sfx.playHover()}
@@ -3736,7 +3793,7 @@
                                         <div
                                             onClick={() => {
                                                 sfx.playClick();
-                                                setActiveSection('TRACKS');
+                                                changeSection('TRACKS');
                                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                                             }}
                                             onMouseEnter={() => sfx.playHover()}
@@ -3764,7 +3821,7 @@
                                         <div
                                             onClick={() => {
                                                 sfx.playClick();
-                                                setActiveSection('PHOTOS');
+                                                changeSection('PHOTOS');
                                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                                             }}
                                             onMouseEnter={() => sfx.playHover()}
@@ -3792,7 +3849,7 @@
                                         <div
                                             onClick={() => {
                                                 sfx.playClick();
-                                                setActiveSection('WIKI');
+                                                changeSection('WIKI');
                                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                                             }}
                                             onMouseEnter={() => sfx.playHover()}
@@ -3820,7 +3877,7 @@
                                         <div
                                             onClick={() => {
                                                 sfx.playClick();
-                                                setActiveSection('TOOLS');
+                                                changeSection('TOOLS');
                                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                                             }}
                                             onMouseEnter={() => sfx.playHover()}
@@ -3855,7 +3912,7 @@
                                 <button
                                     onClick={() => {
                                         sfx.playClick();
-                                        setActiveSection('HOME');
+                                        changeSection('HOME');
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     className="brutal-btn bg-black text-[#CCFF00] px-3.5 py-1.5 font-extrabold flex items-center gap-2"
@@ -3880,7 +3937,7 @@
                                 <button
                                     onClick={() => {
                                         sfx.playClick();
-                                        setActiveSection('HOME');
+                                        changeSection('HOME');
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     className="brutal-btn bg-black text-[#CCFF00] px-3.5 py-1.5 font-extrabold flex items-center gap-2"
@@ -3903,7 +3960,7 @@
                                 <button
                                     onClick={() => {
                                         sfx.playClick();
-                                        setActiveSection('HOME');
+                                        changeSection('HOME');
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     className="brutal-btn bg-black text-[#CCFF00] px-3.5 py-1.5 font-extrabold flex items-center gap-2"
@@ -3926,7 +3983,7 @@
                                 <button
                                     onClick={() => {
                                         sfx.playClick();
-                                        setActiveSection('HOME');
+                                        changeSection('HOME');
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     className="brutal-btn bg-black text-[#CCFF00] px-3.5 py-1.5 font-extrabold flex items-center gap-2"
